@@ -205,6 +205,9 @@ function drawButton(b) {
 
 function drawTouchUI() {
   if (!L.coarse) return;
+  // The shaft prompt is modal: uiPointer routes every touch to it, so the deck's buttons would
+  // be drawn live and do nothing. Buttons that look pressable and are not are worse than none.
+  if (G.mode === 'shaft') return;
   drawDeck();
   for (const b of L.controls) {
     if (b.on === false) continue;

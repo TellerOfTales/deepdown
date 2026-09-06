@@ -748,7 +748,11 @@ export function update(G, dt, input) {
   switch (G.mode) {
     case 'title': updateTitle(G, dt, input); break;
     case 'depot': updateDepot(G, dt, input); break;
-    case 'journal': if (input.pressed('cancel') || input.pressed('journal') || input.pressed('confirm')) { G.mode = 'depot'; audio.ui('close'); } break;
+    case 'journal':
+      if (G.uiLock <= 0 && (input.pressed('cancel') || input.pressed('journal') || input.pressed('confirm'))) {
+        G.mode = 'depot'; G.uiLock = 0.16; audio.ui('close');
+      }
+      break;
     case 'pause': updatePause(G, dt, input); break;
     case 'death': updateDeath(G, dt, input); break;
     case 'run': case 'shaft': updateRun(G, dt, input); break;
@@ -777,6 +781,8 @@ function updateCosmetic(G, dt) {
   G.cam.update(dt);
 }
 
+const inRect = (r, x, y) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+
 function updateTitle(G, dt, input) {
   if (input.pressed('confirm') || input.pressed('dig') || input.anyPressed) {
     audio.init(); audio.ui('confirm');
@@ -784,8 +790,6 @@ function updateTitle(G, dt, input) {
     else { G.mode = 'depot'; G.ui.sel = 0; G.uiLock = 0.3; }
   }
 }
-
-const inRect = (r, x, y) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
 function updatePause(G, dt, input) {
   if (input.pressed('pause') || input.pressed('cancel')) { G.mode = 'run'; G.abandonHold = 0; audio.ui('close'); return; }
@@ -847,7 +851,9 @@ function updateDepot(G, dt, input) {
   if (input.mpressed || input.touch._pdig || input.touch._ptap) {
     const mx = input.mx, my = input.my;
     const D = depotLayout(G.ui.sel);
-    if (my >= D.barY && my <= D.barY + D.barH) { audio.ui('confirm'); startRun(G); return; }
+    if (my >= D.barY && my <= D.barY + D.barH && mx >= D.barX && mx <= D.barX + D.barW) { audio.ui('confirm'); startRun(G); return; }
+    // There is no TAB key on a phone, so the archive line is the door to the journal.
+    if (inRect(D.journal, mx, my)) { G.mode = 'journal'; G.uiLock = 0.16; audio.ui('open'); return; }
     const row = D.first + Math.floor((my - (D.ly - 2)) / D.rowH);
     const inCol = mx >= D.lx - 2 && mx <= D.lx + D.lw + 2;
     if (inCol && my >= D.ly - 2 && row >= D.first && row < D.first + D.view && row < UPGRADES.length) {
@@ -919,7 +925,9 @@ function updateRun(G, dt, input) {
   else {
     if (!G.deathRecorded) { G.deathRecorded = true; die(G, G.deathCause); }
     p.update(dt, input, world, pctx);
-    if (p.deadT > 1.1) { G.mode = 'death'; return; }
+    // A beat before the field report becomes pressable. Dying usually happens while you are
+  // mashing DIG, and without this the report you are meant to read is gone before you see it.
+  if (p.deadT > 1.1) { G.mode = 'death'; G.uiLock = 0.35; return; }
   }
 
   const worldEvents = [];
@@ -1073,8 +1081,7 @@ function updateShaft(G, dt, input) {
   if (input.mpressed || input.touch._ptap) {
     const mx = input.mx, my = input.my;
     const Lo = shaftLayout();
-    const inRect = (r) => mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h;
-    const pick = inRect(Lo.a) ? 0 : inRect(Lo.b) ? 1 : -1;
+    const pick = inRect(Lo.a, mx, my) ? 0 : inRect(Lo.b, mx, my) ? 1 : -1;
     if (pick >= 0) {
       if (pick === 1 && G.strataIdx >= last) { audio.ui('deny'); return; }
       if (pick !== G.shaft.choice) { G.shaft.choice = pick; audio.ui('move'); return; }

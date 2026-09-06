@@ -183,7 +183,7 @@ ok('the haul was banked', await page.evaluate(() => window.G.bank) >= 1800, awai
 await page.evaluate(() => { window.G.bank = 60000; window.G.uiLock = 0; });
 const dl = await page.evaluate(() => {
   const d = window.__depotLayout(window.G.ui.sel);
-  return { rowX: d.lx + d.lw / 2, row2Y: d.ly + d.rowH * 2 + d.rowH / 2 - 2, barX: d.lx + d.lw / 2, barY: d.barY + d.barH / 2 };
+  return { rowX: d.lx + d.lw / 2, row2Y: d.ly + d.rowH * 2 + d.rowH / 2 - 2, barX: d.barX + d.barW / 2, barY: d.barY + d.barH / 2 };
 });
 await tapV(dl.rowX, dl.row2Y, 360);
 await tapV(dl.rowX, dl.row2Y, 360);
@@ -204,6 +204,17 @@ const dthl = await page.evaluate(() => {
 });
 await tapV(dthl.againX, dthl.againY, 800);
 ok('DIG AGAIN restarts', await M() === 'run', await M());
+
+// 12. the journal is reachable and closeable with a thumb
+await page.evaluate(() => { const G = window.G; G.mode = 'depot'; G.uiLock = 0; });
+await page.waitForTimeout(300);
+{
+  const jr = await page.evaluate(() => { const d = window.__depotLayout(window.G.ui.sel); return { x: d.journal.x + d.journal.w / 2, y: d.journal.y + d.journal.h / 2 }; });
+  await tapV(jr.x, jr.y, 420);
+  ok('the archive line opens the journal', await M() === 'journal', await M());
+  await tapV(geom.vw / 2, geom.vh / 2, 500);
+  ok('a tap closes the journal', await M() === 'depot', await M());
+}
 
 console.log('pageerrors: ' + errs.length + (errs.length ? '  ' + errs.slice(0, 3).join(' | ') : ''));
 console.log(fail.length ? 'FAILED: ' + fail.join(', ') : 'ALL TOUCH PATHS OK');

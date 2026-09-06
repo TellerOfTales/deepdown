@@ -286,9 +286,10 @@ if (script === 'play') {
   await page.waitForTimeout(200); await shot('s1-depot');
   await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowDown'); await page.waitForTimeout(200);
   await shot('s2-depot-sel');
-  await page.keyboard.press('Tab'); await page.waitForTimeout(250); await shot('s3-journal');
-  await page.keyboard.press('Tab'); await page.waitForTimeout(200);
-  await page.keyboard.press('Space'); await page.waitForTimeout(600);
+  await page.keyboard.press('Tab'); await page.waitForTimeout(320); await shot('s3-journal');
+  await page.keyboard.press('Tab'); await page.waitForTimeout(320);
+  await page.keyboard.press('Space'); await page.waitForTimeout(700);
+  if (await page.evaluate(() => !window.G.world)) throw new Error('SCREENS: SPACE did not start a run from the Depot');
   // teleport onto the shaft and open the decision
   await page.evaluate(() => {
     const G = window.G;

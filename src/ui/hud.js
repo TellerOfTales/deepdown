@@ -3,7 +3,7 @@
 // GDD §22: "The player should spend attention on the world, not menus." So there are exactly five
 // permanent things on screen, and the largest of them is the number you stand to lose.
 
-import { text, measure, FONT_H } from '../art/font.js';
+import { text, measure, wrap, FONT_H } from '../art/font.js';
 import { drawSprite, frameAt } from '../art/spritesheet.js';
 import * as SP from '../art/sprites_props.js';
 import { P } from '../art/pal.js';
@@ -299,10 +299,19 @@ export function shaftLayout() {
   // already near the bottom of a phone.
   const mx = Math.max(6, Math.round(VW * 0.055));
   const x = mx, w = VW - mx * 2;
-  const y = Math.max(6, Math.round(VH * 0.07)), h = VH - y * 2;
   const stacked = VW < 330;
   const optH = 54;
-  const headH = Math.min(74, Math.round(h * 0.34));
+  const headH = 74;
+  // The panel is sized from what is in it. Stretching it to the screen left a stacked prompt
+  // with a hand-span of empty panel under the last option, and pushed its bottom edge over
+  // the control deck, where the buttons it covered could not be pressed anyway.
+  const bodyH = stacked ? optH * 2 + 8 : optH;
+  // 48 below the options: two lines of stratum tagline and the footer. The tagline is a clue,
+  // not decoration — it is how you learn that slate breaks along its bed before you meet one.
+  const h = Math.min(VH - 12, headH + bodyH + 57);
+  // Centred in the WORLD view, not the canvas: with a control deck the canvas centre is under
+  // the player's thumbs and the composition would sit low.
+  const y = clamp(Math.round(VIEW.y + (VIEW.h - h) / 2), SAFE.t + 4, Math.max(SAFE.t + 4, VH - h - 4));
   const oy = y + headH;
   const a = stacked
     ? { x: x + 8, y: oy, w: w - 16, h: optH }
@@ -353,25 +362,16 @@ export function drawShaftPrompt(g, G) {
 
   const footY = y + h - 12;
   const tagTop = Lo.b.y + Lo.b.h + 6;
-  if (canDescend && footY - tagTop >= 18) {
-    const lines = wrapTag(next.tagline, Math.max(18, Math.floor(w / 5)));
+  if (canDescend && footY - tagTop >= 16) {
+    // Measured, not counted: a character-count wrap picked 35 characters for a 177px column
+    // and the renderer then truncated every line with an ellipsis.
+    const lines = wrap(next.tagline, w - 16, 1).slice(0, 3);
     for (let i = 0; i < lines.length; i++) {
-      text(g, lines[i], cx, tagTop + i * 9, { color: P.UI_DIM, align: 'center', maxWidth: w - 12 });
+      text(g, lines[i], cx, tagTop + i * 9, { color: P.UI_DIM, align: 'center' });
     }
   }
-  text(g, G.touch ? 'TAP TO CHOOSE - TAP AGAIN TO COMMIT' : 'UP/DOWN CHOOSE     E CONFIRM',
+  text(g, G.touch ? 'TAP, THEN TAP AGAIN' : 'UP/DOWN CHOOSE     E CONFIRM',
     cx, footY, { color: P.UI_DARK, align: 'center', maxWidth: w - 8 });
-}
-
-function wrapTag(s, n) {
-  const words = String(s).split(' ');
-  const out = []; let line = '';
-  for (const w of words) {
-    if ((line + ' ' + w).trim().length > n) { out.push(line.trim()); line = w; }
-    else line += ' ' + w;
-  }
-  if (line.trim()) out.push(line.trim());
-  return out.slice(0, 2);
 }
 
 function option(g, x, y, w, on, enabled, arrow, title, line1, line2, accent) {

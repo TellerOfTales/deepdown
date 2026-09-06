@@ -45,27 +45,51 @@ const S = { t: 0, dust: null, sel: 0 };
  * screen has ever had: twelve upgrades in one unbroken list, no scrolling, no columns.
  */
 export function depotLayout(sel) {
-  const narrow = VW < 380;
+  // Three shapes, because a phone is three different screens depending on how it is held.
+  //   wide  — the desktop layout: a list on the left, a column of context on the right.
+  //   tall  — a phone upright: one column, thumb-height rows, all twelve upgrades at once.
+  //   short — a phone on its side: the list keeps the left, everything else moves right.
   const pad = Math.max(6, Math.round(VW * 0.028));
+  const roomy = VW >= 380 && VH >= 250;
+  const shape = roomy ? 'wide' : (VW >= 380 ? 'short' : 'tall');
+  const narrow = shape !== 'wide';
   const lx = SAFE.l + pad;
-  const lw = narrow ? VW - SAFE.l - SAFE.r - pad * 2 : 268;
-  const headH = narrow ? 40 : 44;
+  const headH = shape === 'wide' ? 44 : shape === 'short' ? 34 : 40;
   const ly = SAFE.t + headH;
   const barH = 22;
   const barY = VH - SAFE.b - barH - 14;
-  // Reserve room for the description under the list, and on a phone for the last-run line too.
-  const listBottom = barY - (narrow ? 62 : 24);
+
+  let lw, barX, barW, listBottom, info;
+  if (shape === 'wide') {
+    lw = 268; barX = lx; barW = lw;
+    listBottom = barY - 24;
+    info = { x: 288, y: 44, w: VW - 288 - 10, h: barY - 50 };
+  } else if (shape === 'short') {
+    lw = Math.round((VW - SAFE.l - SAFE.r - pad * 3) * 0.56);
+    barX = lx + lw + pad; barW = VW - SAFE.r - pad - barX;
+    listBottom = barY + barH;                      // the list may run the full height
+    info = { x: barX, y: ly, w: barW, h: barY - ly - 8 };
+  } else {
+    lw = VW - SAFE.l - SAFE.r - pad * 2;
+    barX = lx; barW = lw;
+    listBottom = barY - 62;
+    info = { x: lx, y: barY - 34, w: lw, h: 30 };
+  }
+
   // On a phone the rows grow to fill the column. A 13px row is a 7mm target; letting the list
-  // breathe into the space a portrait screen actually has makes every row a thumb-sized one
-  // and gets rid of the dead band that opened up under it.
-  const rowH = narrow
+  // breathe into the space a portrait screen actually has makes every row a thumb-sized one.
+  const rowH = shape === 'tall'
     ? Math.max(13, Math.min(26, Math.floor((listBottom - ly) / UPGRADES.length)))
     : 13;
   const view = Math.max(4, Math.min(UPGRADES.length, Math.floor((listBottom - ly) / rowH)));
   const cur = sel === undefined ? S.sel : sel;
   const first = clamp(cur - Math.floor(view / 2), 0, Math.max(0, UPGRADES.length - view));
-  const rx = narrow ? 0 : 288, rw = narrow ? 0 : VW - 288 - 10;
-  return { narrow, pad, lx, lw, ly, rowH, view, first, barY, barH, rx, rw, listBottom };
+  // On a phone the archive line is the only way into the journal: there is no TAB key.
+  const journal = shape === 'wide'
+    ? { x: info.x + 4, y: 196, w: info.w - 8, h: 12 }
+    : { x: info.x, y: info.y + info.h - 12, w: info.w, h: 12 };
+  return { shape, narrow, pad, lx, lw, ly, rowH, view, first, barX, barY, barW, barH,
+           rx: info.x, rw: info.w, info, listBottom, journal };
 }
 
 export function screensUpdate(G, dt) {
@@ -272,37 +296,47 @@ export function drawDepot(g, G, dt) {
     text(g, G.discoveries.size + ' RULES CONFIRMED', rx + 6, 190, { color: P.UI_COOL });
     text(g, 'TAB  FIELD JOURNAL', rx + 6, 199, { color: P.UI_DARK });
   } else {
-    // ── narrow: one line of last-run fact where the column used to be ───────
-    const lr = G.lastRun;
-    const y = D.barY - 30;
-    g.fillStyle = P.UI_DARK; g.fillRect(lx, y - 4, lw, 1);
+    // ── narrow / short: the same facts, compressed into whatever block is left ─
+    const I = D.info, lr = G.lastRun;
+    const stacked = D.shape === 'short';
+    let iy = I.y;
+    g.fillStyle = P.UI_DARK; g.fillRect(I.x, iy - 4, I.w, 1);
     if (!lr) {
-      text(g, 'THE LIFT IS WAITING.', lx + 2, y + 1, { color: P.UI_DARK });
+      text(g, 'THE LIFT IS WAITING.', I.x + 2, iy + 1, { color: P.UI_DARK, maxWidth: I.w - 4 });
+      iy += 11;
     } else {
-      text(g, lr.extracted ? 'EXTRACTED' : 'LOST', lx + 2, y + 1,
+      text(g, lr.extracted ? 'EXTRACTED' : 'LOST', I.x + 2, iy + 1,
         { color: lr.extracted ? P.UI_GOOD : P.UI_DANGER });
       text(g, lr.depth + ' M   ' + (lr.extracted ? 'BANKED ' : 'AT ') + money(lr.value),
-        lx + lw - 2, y + 1, { color: P.UI_BONE, align: 'right' });
-      const note = (lr.learned || []).slice(-1)[0];
-      if (note) text(g, note, lx + 2, y + 11, { color: P.UI_COOL, maxWidth: lw - 4 });
+        I.x + I.w - 2, iy + 1, { color: P.UI_BONE, align: 'right' });
+      iy += 11;
+      const notes = (lr.learned || []).slice(stacked ? -3 : -1);
+      for (const n of notes) {
+        if (iy > I.y + I.h - 22) break;
+        const lines = wrap(n, I.w - 4, 1).slice(0, stacked ? 2 : 1);
+        for (let k = 0; k < lines.length; k++) text(g, lines[k], I.x + 2, iy + k * 8, { color: k ? P.UI_DIM : P.UI_COOL });
+        iy += lines.length * 8 + 3;
+      }
     }
     const found = G.journal.filter(j => j.found).length;
-    text(g, found + '/' + G.journal.length + ' RELICS    ' + G.discoveries.size + ' RULES',
-      lx + 2, y + 20, { color: P.UI_DARK });
+    text(g, found + '/' + G.journal.length + ' RELICS   ' + G.discoveries.size + ' RULES',
+      D.journal.x + 2, D.journal.y + 3, { color: P.UI_DARK });
+    text(g, 'JOURNAL >', D.journal.x + D.journal.w - 2, D.journal.y + 3,
+      { color: P.UI_COOL, align: 'right' });
   }
 
   // ── the button that matters ───────────────────────────────────────────────
-  const by = D.barY, bh = D.barH;
+  const by = D.barY, bh = D.barH, bx = D.barX, bw = D.barW;
   const pulse = 0.62 + Math.sin(S.t * 3.2) * 0.38;
   g.save();
   g.globalAlpha = 0.25 + pulse * 0.35;
-  g.fillStyle = P.GOLD1; g.fillRect(lx, by, lw, bh);
+  g.fillStyle = P.GOLD1; g.fillRect(bx, by, bw, bh);
   g.restore();
-  g.strokeStyle = P.UI_GOLD; g.strokeRect(lx + 0.5, by + 0.5, lw - 1, bh - 1);
-  text(g, G.touch ? 'DESCEND' : 'SPACE   DESCEND', lx + lw / 2, by + 6,
-    { color: P.GOLD5, align: 'center', scale: 2, shadow: true });
+  g.strokeStyle = P.UI_GOLD; g.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+  text(g, G.touch ? 'DESCEND' : 'SPACE   DESCEND', bx + bw / 2, by + 6,
+    { color: P.GOLD5, align: 'center', scale: 2, shadow: true, maxWidth: bw - 6 });
   text(g, G.touch ? 'TAP A ROW, TAP AGAIN TO BUY' : 'UP/DOWN SELECT    ENTER BUY    OR CLICK',
-    lx + lw / 2, by + bh + 5, { color: P.UI_DARK, align: 'center', maxWidth: lw });
+    bx + bw / 2, by + bh + 5, { color: P.UI_DARK, align: 'center', maxWidth: bw });
 }
 
 function shaftBackdropSoft(g) {
@@ -418,52 +452,80 @@ export function drawDeath(g, G, dt) {
     { color: P.UI_DARK, align: 'center' });
 }
 
+export function journalLayout() {
+  const narrow = VW < 380;
+  const pad = Math.max(6, Math.round(VW * 0.028));
+  const top = SAFE.t + 22, bot = VH - SAFE.b - 18;
+  if (narrow) {
+    const h = Math.floor((bot - top - 6) / 2);
+    return { narrow, a: { x: pad, y: top, w: VW - pad * 2, h },
+                     b: { x: pad, y: top + h + 6, w: VW - pad * 2, h } };
+  }
+  const w = VW / 2 - 16;
+  return { narrow, a: { x: 10, y: 28, w, h: bot - 28 },
+                   b: { x: VW / 2 + 6, y: 28, w, h: bot - 28 } };
+}
+
 export function drawJournal(g, G, dt) {
   fill(g, P.INK);
-  text(g, 'FIELD JOURNAL', VW / 2, 8, { color: P.UI_BONE, align: 'center', scale: 2 });
+  const J = journalLayout();
+  text(g, 'FIELD JOURNAL', VW / 2, SAFE.t + 8, { color: P.UI_BONE, align: 'center', scale: 2 });
 
-  const lx = 10, lw = VW / 2 - 16;
-  panel(g, lx, 28, lw, VH - 48, 0.85);
-  text(g, 'ARCHIVE', lx + 6, 34, { color: P.UI_DIM });
-  let y = 46;
+  // ── what you have brought up ────────────────────────────────────────────
+  panel(g, J.a.x, J.a.y, J.a.w, J.a.h, 0.85);
+  text(g, 'ARCHIVE', J.a.x + 6, J.a.y + 6, { color: P.UI_DIM });
+  const aEnd = J.a.y + J.a.h - 6;
+  let y = J.a.y + 18;
+  let hidden = 0;
+  const maxBlurb = J.narrow ? 3 : 2;
   for (const j of G.journal) {
-    if (y > VH - 34) break;
     if (j.found) {
-      drawSprite(g, SP.ITEM_RELIC, 0, lx + 12, y + 10, null);
-      text(g, j.name, lx + 24, y, { color: P.UI_GOLD });
-      const lines = wrap(j.blurb, lw - 34, 1).slice(0, 2);
-      for (let k = 0; k < lines.length; k++) text(g, lines[k], lx + 24, y + 8 + k * 8, { color: P.UI_DIM });
-      text(g, j.depth + ' M', lx + lw - 6, y, { color: P.UI_DARK, align: 'right' });
-      y += 8 + lines.length * 8 + 5;
-    } else {
+      const lines = wrap(j.blurb, J.a.w - 34, 1).slice(0, maxBlurb);
+      const need = 8 + lines.length * 8 + 5;
+      // Measure BEFORE drawing. Checking afterwards let the last entry run past the panel and
+      // land on the line underneath it.
+      if (y + need > aEnd) { hidden++; continue; }
+      drawSprite(g, SP.ITEM_RELIC, 0, J.a.x + 12, y + 10, null);
+      text(g, j.name, J.a.x + 24, y, { color: P.UI_GOLD, maxWidth: J.a.w - 60 });
+      for (let k = 0; k < lines.length; k++) text(g, lines[k], J.a.x + 24, y + 8 + k * 8, { color: P.UI_DIM });
+      text(g, j.depth + ' M', J.a.x + J.a.w - 6, y, { color: P.UI_DARK, align: 'right' });
+      y += need;
+    } else if (y + 13 > aEnd) { hidden++; } else {
       g.save(); g.globalAlpha = 0.25;
-      drawSprite(g, SP.ITEM_RELIC, 0, lx + 12, y + 8, null);
+      drawSprite(g, SP.ITEM_RELIC, 0, J.a.x + 12, y + 8, null);
       g.restore();
-      text(g, '???', lx + 24, y, { color: P.UI_DARK });
+      text(g, '???', J.a.x + 24, y, { color: P.UI_DARK });
       y += 13;
     }
   }
+  if (hidden) text(g, '+' + hidden + ' MORE', J.a.x + J.a.w - 6, aEnd - 6, { color: P.UI_DARK, align: 'right' });
 
-  const rx = VW / 2 + 6, rw = VW / 2 - 16;
-  panel(g, rx, 28, rw, VH - 48, 0.85);
-  text(g, 'FIELD NOTES', rx + 6, 34, { color: P.UI_DIM });
-  let ry = 46;
+  // ── what you have proved ────────────────────────────────────────────────
+  panel(g, J.b.x, J.b.y, J.b.w, J.b.h, 0.85);
+  text(g, 'FIELD NOTES', J.b.x + 6, J.b.y + 6, { color: P.UI_DIM });
+  const bEnd = J.b.y + J.b.h - 6;
+  let ry = J.b.y + 18;
   const RULES = G.ruleTable || {};
   const ids = Array.from(G.discoveries);
-  if (!ids.length) text(g, 'YOU HAVE PROVED NOTHING YET.', rx + 6, ry, { color: P.UI_DARK });
+  if (!ids.length) text(g, 'YOU HAVE PROVED NOTHING YET.', J.b.x + 6, ry, { color: P.UI_DARK, maxWidth: J.b.w - 12 });
+  let moreRules = 0;
   for (const id of ids) {
-    if (ry > VH - 44) break;
     const r = RULES[id];
     if (!r) continue;
-    text(g, r.title, rx + 6, ry, { color: P.UI_COOL });
-    const lines = wrap(r.rule, rw - 14, 1).slice(0, 2);
-    for (let k = 0; k < lines.length; k++) text(g, lines[k], rx + 6, ry + 8 + k * 8, { color: P.UI_BONE });
-    ry += 8 + lines.length * 8 + 5;
+    const lines = wrap(r.rule, J.b.w - 14, 1).slice(0, J.narrow ? 3 : 2);
+    const need = 8 + lines.length * 8 + 5;
+    if (ry + need > bEnd - 10) { moreRules++; continue; }
+    text(g, r.title, J.b.x + 6, ry, { color: P.UI_COOL, maxWidth: J.b.w - 12 });
+    for (let k = 0; k < lines.length; k++) text(g, lines[k], J.b.x + 6, ry + 8 + k * 8, { color: P.UI_BONE });
+    ry += need;
   }
   const total = Object.keys(RULES).length || 16;
-  text(g, Math.max(0, total - G.discoveries.size) + ' RULES UNCONFIRMED', rx + 6, VH - 38, { color: P.UI_DARK });
+  text(g, (moreRules ? '+' + moreRules + ' MORE   ' : '') +
+    Math.max(0, total - G.discoveries.size) + ' UNCONFIRMED',
+    J.b.x + 6, bEnd - 6, { color: P.UI_DARK, maxWidth: J.b.w - 12 });
 
-  text(g, 'TAB  BACK', VW / 2, VH - 12, { color: P.UI_DIM, align: 'center' });
+  text(g, G.touch ? 'TAP TO GO BACK' : 'TAB  BACK', VW / 2, VH - SAFE.b - 12,
+    { color: P.UI_DIM, align: 'center' });
 }
 
 export function drawPause(g, G, dt) {

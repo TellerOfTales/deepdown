@@ -101,6 +101,26 @@ for (const d of list) {
   await page.waitForTimeout(400);
   await page.screenshot({ path: join(OUT, d.id + '-4-depot.png') });
 
+  // The journal, which is the densest text screen in the game.
+  await page.evaluate(() => {
+    const G = window.G;
+    G.journal.forEach((j, i) => { if (i < 4) { j.found = true; j.depth = 40 + i * 30; } });
+    Object.keys(G.ruleTable || {}).slice(0, 6).forEach(k => G.discoveries.add(k));
+    G.mode = 'journal'; G.uiLock = 0;
+  });
+  await page.waitForTimeout(350);
+  await page.screenshot({ path: join(OUT, d.id + '-5-journal.png') });
+
+  // The shaft prompt: the one screen where the whole run is decided.
+  await page.evaluate(() => {
+    const G = window.G;
+    if (!G.world) return;
+    G.mode = 'shaft'; G.shaft.open = true; G.shaft.choice = 1;
+    G.haul = 3400; G.haulItems = { nugget: 3, gem: 2, relic: 1 };
+  });
+  await page.waitForTimeout(350);
+  await page.screenshot({ path: join(OUT, d.id + '-6-shaft.png') });
+
   const mode = await page.evaluate(() => window.G.mode);
   rows.push({ id: d.id, ...geo, mode, errs: errs.length });
   await ctx.close();
