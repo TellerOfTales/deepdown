@@ -125,21 +125,18 @@ function drawSonar() {
 }
 
 let last = performance.now();
-let acc = 0;
-const STEP = 1 / 120;
 
 function frame(now) {
   requestAnimationFrame(frame);
   let dt = (now - last) / 1000;
   last = now;
-  if (dt > 0.25) dt = 0.25;
-  acc += dt;
-  let guard = 0;
-  while (acc >= STEP && guard++ < 12) {
-    gameUpdate(G, STEP, input);
-    input.endFrame();
-    acc -= STEP;
-  }
+  // One variable step per frame, hard-clamped. Collision resolution already advances a pixel at
+  // a time, so a long frame degrades into slow motion rather than into tunnelling — and input is
+  // consumed exactly once per frame, which is what keeps a rhythm game honest.
+  if (dt > 1 / 20) dt = 1 / 20;
+  if (dt < 0.0005) dt = 0.0005;
+  gameUpdate(G, dt, input);
+  input.endFrame();
   hudUpdate(G, dt);
   screensUpdate(G, dt);
 

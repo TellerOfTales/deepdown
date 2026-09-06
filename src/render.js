@@ -17,6 +17,7 @@ import { PROP_ART, ITEM_ART, CURSOR, VEIN_ARROW } from './art/sprites_props.js';
 import * as PA from './art/sprites_player.js';
 import { ANIM } from './entities/player.js';
 import * as Enemies from './entities/enemies.js';
+import { isGone } from './game.js';
 
 const ANIM_SPRITE = {
   IDLE: 'MINER_IDLE', WALK: 'MINER_WALK', JUMP: 'MINER_JUMP', FALL: 'MINER_FALL',
@@ -207,8 +208,8 @@ export function drawLighting(g, G) {
   lightCtx.putImageData(lightImg, 0, 0);
   g.save();
   g.imageSmoothingEnabled = true;
-  const dx = lf.x0 * TS - G.cam.ix - TS / 2;
-  const dy = lf.y0 * TS - G.cam.iy - TS / 2;
+  const dx = lf.x0 * TS - G.cam.ix;
+  const dy = lf.y0 * TS - G.cam.iy;
   g.drawImage(lightCanvas, 0, 0, lw, lh, dx, dy, lw * TS, lh * TS);
   g.restore();
   g.imageSmoothingEnabled = false;
@@ -281,12 +282,12 @@ export function drawFlash(g, G) {
 
 export function drawEnemies(g, G) {
   const camX = G.cam.ix, camY = G.cam.iy;
-  for (const e of G.enemies) if (!e.gone) Enemies.draw(g, e, camX, camY);
+  for (const e of G.enemies) if (!isGone(e)) Enemies.draw(g, e, camX, camY);
 }
 export function drawEnemyGlow(g, G) {
   const camX = G.cam.ix, camY = G.cam.iy;
   g.save(); g.globalCompositeOperation = 'lighter';
-  for (const e of G.enemies) if (!e.gone) Enemies.drawGlow(g, e, camX, camY);
+  for (const e of G.enemies) if (!isGone(e)) Enemies.drawGlow(g, e, camX, camY);
   g.restore();
 }
 

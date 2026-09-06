@@ -137,6 +137,11 @@ function blob(cx, cy, r, c, salt) {
   }
 }
 
+// Overlays have to read on near-black bedrock AND on pale granite. INK is too close in
+// value to most rock to survive, and ROCK6 is too close to be a highlight, so every
+// fissure is authored as "void core + near-white lip" — a pairing that reads on both.
+const LIP = mix(P.ROCK6, P.UI_WHITE, 0.55);
+
 const DIRX = [1, 1, 0, -1, -1, -1, 0, 1];
 const DIRY = [0, 1, 1, 1, 0, -1, -1, -1];
 
@@ -879,9 +884,9 @@ function genCrack(stage, r) {
   const total = net.length;
   const frac = stage === 1 ? 0.24 : stage === 2 ? 0.56 : 1.0;
   const count = Math.max(4, Math.round(total * frac));
-  const darkA = stage === 1 ? 0.62 : stage === 2 ? 0.74 : 0.86;
+  const darkA = stage === 1 ? 0.80 : stage === 2 ? 0.88 : 0.95;
   MARK.fill(0);
-  const ink = C(P.INK), voidc = C(P.VOID), hi = C(P.ROCK6);
+  const ink = C(P.VOID), voidc = C(P.VOID), hi = LIP;
   for (let k = 0; k < count && k < total; k++) {
     const i = net[k];
     const x = i & 15, y = i >> 4;
@@ -896,7 +901,7 @@ function genCrack(stage, r) {
     const i = (y << 4) + x;
     if (MARK[i]) continue;
     const up = y > 0 && MARK[i - 16], lf = x > 0 && MARK[i - 1];
-    if (up || lf) pxa(x, y, hi, stage === 3 ? 0.34 : 0.24);
+    if (up || lf) pxa(x, y, hi, stage === 3 ? 0.46 : stage === 2 ? 0.38 : 0.30);
   }
   if (stage === 3) {
     // spall: chips already gone. The eye reads missing material as imminent failure.
@@ -904,7 +909,7 @@ function genCrack(stage, r) {
       const c = net[Math.min(total - 1, r.i(0, total - 1))];
       const x = c & 15, y = c >> 4;
       pxa(x, y, voidc, 0.95); pxa(x + 1, y, voidc, 0.9); pxa(x, y + 1, voidc, 0.9);
-      pxa(x + 1, y + 1, hi, 0.22);
+      pxa(x + 1, y + 1, hi, 0.40);
     }
   }
 }
@@ -955,8 +960,8 @@ function decoHairline(v, r, salt) {
     if (r.bool(0.18)) drift += r.bool() ? 1 : -1;
     const a = clamp(off + drift, 0, 15);
     const x = vert ? a : start + k, y = vert ? start + k : a;
-    pxa(x, y, C(P.INK), 0.66);
-    if ((k & 1) === 0) pxa(x + (vert ? 1 : 0), y + (vert ? 0 : 1), C(P.ROCK6), 0.16);
+    pxa(x, y, C(P.VOID), 0.82);
+    if ((k & 1) === 0) pxa(x + (vert ? 1 : 0), y + (vert ? 0 : 1), LIP, 0.30);
   }
 }
 
@@ -972,8 +977,8 @@ function decoAirflow(v, r, salt) {
     const len = r.i(4, 6);
     for (let k = 0; k < len; k++) {
       const t = k / (len - 1);
-      const a = 0.38 * Math.sin(t * Math.PI);     // tapered at both ends = motion, not a scratch
-      pxa(Math.round(px0 + ux * k), Math.round(py0 + uy * k), C(P.ROCK6), a);
+      const a = 0.42 * Math.sin(t * Math.PI);     // tapered at both ends = motion, not a scratch
+      pxa(Math.round(px0 + ux * k), Math.round(py0 + uy * k), LIP, a);
     }
   }
 }
@@ -984,8 +989,9 @@ function decoDamp(v, r, salt) {
   for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
     const dx = x - cx, dy = y - cy;
     const d = Math.sqrt(dx * dx + dy * dy);
-    if (d < 4.5) pxa(x, y, C(P.INK), 0.30);
-    else if (d < 6.2 && hashf(x, y, salt) < 0.45) pxa(x, y, C(P.INK), 0.20);
+    if (d < 4.5) pxa(x, y, C(P.VOID), 0.42);
+    else if (d < 6.2 && hashf(x, y, salt) < 0.45) pxa(x, y, C(P.VOID), 0.24);
+    if (d < 4.0 && hashf(x, y, salt + 3) < 0.12) pxa(x, y, LIP, 0.18);   // sheen
   }
   for (let i = 0; i < 2; i++) {
     const bx = clamp(cx + r.i(-3, 3), 1, 14), by = clamp(cy + r.i(-3, 3), 1, 14);
@@ -1036,8 +1042,8 @@ function decoScratch(v, r, salt) {
     const half = r.f(4, 6.5);
     for (let k = -half; k <= half; k += 0.9) {
       const x = Math.round(ox + ux * k), y = Math.round(oy + uy * k);
-      pxa(x, y, C(P.INK), 0.72);
-      pxa(x - Math.round(uy), y + Math.round(ux), C(P.ROCK6), 0.22);
+      pxa(x, y, C(P.VOID), 0.85);
+      pxa(x - Math.round(uy), y + Math.round(ux), LIP, 0.34);
     }
   }
 }

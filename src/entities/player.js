@@ -324,24 +324,37 @@ export class Player {
     }
   }
 
+  /**
+   * Which tile is the pick actually going to hit?
+   *
+   * The 0.5px bias matters: when the body is flush against a wall the edge lands exactly on a
+   * tile boundary, and without the bias floor() rounds INTO the wall and the swing targets the
+   * tile behind it. That bug reads as "the game ignored my input", which is unforgivable here.
+   */
   updateAim(world) {
     const a = this.aim;
     const [dx, dy] = this.digDir;
     const cxT = Math.floor(this.x / TS);
     if (dy > 0) {
-      a.tx = cxT; a.ty = Math.floor((this.y + 1) / TS); a.second = -1;
+      a.tx = cxT; a.ty = Math.floor((this.y + 0.5) / TS); a.second = -1;
     } else if (dy < 0) {
-      a.tx = cxT; a.ty = Math.floor((this.y - this.h - 1) / TS); a.second = -1;
+      a.tx = cxT; a.ty = Math.floor((this.y - this.h - 0.5) / TS); a.second = -1;
     } else {
       const sgn = dx || this.facing;
-      a.tx = Math.floor((this.x + sgn * (this.w / 2 + 5)) / TS);
-      const rowMid = Math.floor((this.y - this.h * 0.55) / TS);
-      const rowLow = Math.floor((this.y - 3) / TS);
-      a.ty = rowMid;
-      a.second = rowLow !== rowMid ? rowLow : -1;
+      a.tx = Math.floor((this.x + sgn * (this.w / 2 - 0.5)) / TS) + sgn;
+      const rowBot = Math.floor((this.y - 0.5) / TS);          // waist / leg height
+      const rowTop = Math.floor((this.y - this.h + 0.5) / TS);  // head height
+      a.ty = rowBot;
+      a.second = rowTop !== rowBot ? rowTop : -1;
+      // Aim at whichever of the two rows still has rock in it, so the last tile of a corridor
+      // is never unreachable.
+      if (!TILES[world.get(a.tx, a.ty)].diggable && a.second >= 0 && TILES[world.get(a.tx, a.second)].diggable) {
+        const t = a.ty; a.ty = a.second; a.second = t;
+      }
     }
     a.tile = world.get(a.tx, a.ty);
-    a.valid = TILES[a.tile].diggable && a.tile !== T.AIR;
+    a.valid = (TILES[a.tile].diggable && a.tile !== T.AIR) ||
+              (a.second >= 0 && TILES[world.get(a.tx, a.second)].diggable);
     a.stage = world.stage(a.tx, a.ty);
   }
 

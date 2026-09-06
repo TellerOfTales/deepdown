@@ -1,0 +1,63 @@
+<!doctype html><html><head><meta charset="utf-8"><title>gen</title>
+<style>html,body{margin:0;background:#0d0c13;color:#8a8496;font:11px monospace}
+canvas{image-rendering:pixelated;display:block;margin:4px auto}</style></head>
+<body><canvas id="c"></canvas>
+<script type="module">
+import { World } from '../src/world/world.js';
+import { generate } from '../src/world/gen.js';
+import { Rand } from '../src/core/rng.js';
+import { T, TILES, D, STRATA } from '../src/world/tiles.js';
+import { P } from '../src/art/pal.js';
+import * as F from '../src/art/font.js';
+
+const COL = [];
+COL[T.AIR]='#0a0910'; COL[T.DIRT]=P.DIRT3; COL[T.GRAVEL]=P.GRAV3; COL[T.STONE]=P.STON3;
+COL[T.SLATE]=P.SLAT3; COL[T.GRANITE]=P.GRAN3; COL[T.BEDROCK]='#050508';
+COL[T.ORE_GOLD]=P.GOLD3; COL[T.ORE_GEM]=P.GEM4; COL[T.CRYSTAL]=P.CYAN4; COL[T.BONE]=P.BONE3;
+COL[T.RUIN]=P.RUIN4; COL[T.RELIC]='#ffffff'; COL[T.ROOT]=P.ROOT3; COL[T.WATER]=P.WAT3;
+COL[T.MAGMA]=P.MAG4; COL[T.MIMIC]='#9c8f2e'; COL[T.GLOWCAP]=P.FUNG2; COL[T.SUPPORT]=P.LEATH2;
+const DCOL = {1:'#5a4a10',2:'#ffd867',3:'#556',4:'#88a',5:'#2a6a8a',6:'#3a8a3a',7:'#aaa',8:'#a44',9:'#cc9',10:'#a07fd0',11:'#c05a10'};
+
+const SEEDS = 3, S = 3;
+const runs = [];
+for (let si=0; si<3; si++) for (let k=0;k<SEEDS;k++) {
+  const w = new World(si, 1000+k);
+  const t0 = performance.now();
+  generate(w, new Rand(1000+k*7919+si*104729), {index:si, depthTop:STRATA[si].top, valueMul:STRATA[si].valueMul, threat:STRATA[si].threat, w:w.w, h:w.h});
+  runs.push({w, ms:(performance.now()-t0).toFixed(1), si, k});
+}
+const cw = Math.max(...runs.map(r=>r.w.w))*S + 8;
+const ch = Math.max(...runs.map(r=>r.w.h))*S + 34;
+const c=document.getElementById('c');
+c.width = cw*SEEDS; c.height = ch*3;
+c.style.width=(c.width)+'px';
+const g=c.getContext('2d'); g.imageSmoothingEnabled=false;
+g.fillStyle='#0d0c13'; g.fillRect(0,0,c.width,c.height);
+let counts = {};
+runs.forEach((r,i)=>{
+  const ox = (i%SEEDS)*cw+4, oy = Math.floor(i/SEEDS)*ch+22;
+  const {w} = r;
+  for(let y=0;y<w.h;y++)for(let x=0;x<w.w;x++){
+    const id=w.mat[y*w.w+x];
+    g.fillStyle = COL[id]||'#f0f';
+    g.fillRect(ox+x*S,oy+y*S,S,S);
+    const d=w.deco[y*w.w+x];
+    if(d && id!==T.AIR){ g.fillStyle=DCOL[d]||'#f0f'; g.fillRect(ox+x*S,oy+y*S,1,1); }
+    counts[id]=(counts[id]||0)+1;
+  }
+  g.fillStyle='#0f0'; g.fillRect(ox+w.entryTX*S-1,oy+w.entryTY*S-1,S+2,S+2);
+  g.fillStyle='#f0f'; g.fillRect(ox+w.shaftTX*S-1,oy+w.shaftTY*S-1,S+2,S+2);
+  g.fillStyle='#f44';
+  for(const s of w.spawns) g.fillRect(ox+s.tx*S,oy+s.ty*S,S,S);
+  F.text(g,'STRATUM '+STRATA[r.si].roman+' SEED '+(1000+r.k)+'  '+r.ms+'ms  SPAWN '+w.spawns.length+' PROPS '+w.props.length,ox,oy-16,{color:P.UI_GOLD,scale:1});
+  F.text(g,(w.hint||'(no hint)').slice(0,72),ox,oy-7,{color:P.UI_DIM});
+});
+const tot = {};
+for(const k in counts) tot[(TILES[k]&&TILES[k].name)||k]=counts[k];
+console.log('GENPREVIEW', JSON.stringify(tot));
+console.log('VALUE', runs.map(r=>{
+  let v=0,n=0; const w=r.w;
+  for(let i=0;i<w.mat.length;i++){const t=TILES[w.mat[i]]; if(t.value>0){v+=t.value*STRATA[r.si].valueMul; n++;}}
+  return 'S'+r.si+' seed'+r.k+': '+Math.round(v)+' in '+n+' tiles';
+}).join(' | '));
+</script></body></html>

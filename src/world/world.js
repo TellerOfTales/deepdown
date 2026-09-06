@@ -182,7 +182,7 @@ export class World {
     // falling tiles (visual)
     for (let i = this.falling.length - 1; i >= 0; i--) {
       const f = this.falling[i];
-      f.vy = Math.min(f.vy + CFG.gravity * 1.15 * dt, 420);
+      f.vy = Math.min(f.vy + CFG.gravity * 1.15 * dt, 290);   // < TS / maxFrameDt, or it tunnels
       f.y += f.vy * dt;
       const ty = Math.floor((f.y + TS - 1) / TS);
       if (this.get(f.tx, ty) !== T.AIR || ty >= this.h) {
@@ -198,7 +198,6 @@ export class World {
     if (this.settleTimer <= 0) {
       this.settleTimer = 0.075;
       let budget = 90;
-      const next = [];
       while (this.settleQ.length && budget-- > 0) {
         const k = this.settleQ.shift();
         this.settleSet.delete(k);
@@ -213,7 +212,6 @@ export class World {
           this.queueSettle(tx, ty);
         }
       }
-      for (const k of next) this.settleQ.push(k);
     }
 
     this.liquidTimer -= dt;

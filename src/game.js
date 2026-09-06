@@ -204,6 +204,12 @@ export function die(G, cause) {
 // ── strike resolution: the composition layer ──────────────────────────────────
 function tileCentre(tx, ty) { return [tx * TS + TS / 2, ty * TS + TS / 2]; }
 
+/** Enemy modules differ on how they mark a corpse; accept any of the usual spellings. */
+export function isGone(e) {
+  return !!(e.gone || e.removed || e.despawn || e.remove ||
+            (e.dead && (e.deathT === undefined ? true : e.deathT > 0.55)));
+}
+
 function cavitySize(world, tx, ty, cap) {
   // Flood fill open space to decide whether we just made a hole or opened a room.
   const seen = new Set();
@@ -258,6 +264,16 @@ export function resolveStrike(G, info) {
 
   const res = world.strike(info.tx, info.ty, info.power, info.damage, { crit: info.crit });
 
+  // A sideways swing goes through the WHOLE face in front of you, not one tile of it: the second
+  // row the body occupies takes a share of the same blow. That is why tunnelling feels powerful
+  // instead of like chipping a wall with a teaspoon.
+  if (info.second >= 0 && info.dy === 0) {
+    const r2 = world.strike(info.tx, info.second, info.power, info.damage * CFG.sideSpill, { crit: info.crit });
+    if (r2.broke && r2.broken && r2.broken.length) {
+      handleBreaks(G, r2.broken, { tx: info.tx, ty: info.second, dx: info.dx, dy: 0, crit: info.crit, combo: info.combo }, false);
+    }
+  }
+
   if (!res.hit) {
     if (res.tooHard) {
       audio.strike(tinfo.voice, { tooHard: true, crit: info.crit, heavy: info.heavy });
@@ -284,6 +300,14 @@ export function resolveStrike(G, info) {
     crit: info.crit, heavy: info.heavy, combo: info.combo,
     stage: res.stage, hollow, power: info.power,
   });
+  // Onboarding without a tutorial: name the thing the player just did, once, the first time
+  // they do it. GDD §25 asks whether players can learn the rules without being told them —
+  // so we confirm discoveries, we never pre-explain them.
+  if (info.crit) {
+    if (!G.tutorialShown.crit) { G.tutorialShown.crit = 1; msg(G, 'CRITICAL FRACTURE - YOU HIT IT ON THE BEAT', '#ffd867'); }
+    if (info.combo === 5 && !G.tutorialShown.combo5) { G.tutorialShown.combo5 = 1; msg(G, 'COMBO x5 - ORE IS WORTH MORE WHILE THIS HOLDS', '#ffd867'); }
+    if (info.combo === 12 && !G.tutorialShown.combo12) { G.tutorialShown.combo12 = 1; msg(G, 'x12 - THE ROCK IS SINGING', '#7ff0dd'); }
+  }
   G.cam.addShake(info.heavy ? CFG.shakeHeavy : info.crit ? CFG.shakeCrit : CFG.shakeTap);
   G.cam.punch(info.dx, info.dy, CFG.camPunch * (info.heavy ? 1.5 : info.crit ? 1.1 : 0.6));
   G.hitstop = Math.max(G.hitstop, info.crit ? CFG.hitstopCrit : CFG.hitstopTap);
@@ -330,8 +354,9 @@ function handleBreaks(G, broken, info, hollow) {
     world.queueSettle(b.tx, b.ty);
   }
 
+  if (!broken.length) return;
   const big = broken.length >= 4;
-  audio.breakTile(TILES[info.crit ? broken[0].tile : broken[0].tile].voice, {
+  audio.breakTile(TILES[broken[0].tile].voice, {
     big, chain, shear: shear > 0, value: clamp(valueGained / 300, 0, 1),
   });
   G.hitstop = Math.max(G.hitstop, big ? CFG.hitstopBigBreak : CFG.hitstopBreak);
@@ -502,9 +527,11 @@ export function update(G, dt, input) {
   G.t += dt;
   G.dtLast = dt;
 
+  // Hitstop is near-freeze, not freeze. The world stops; the input queue does not. Swallowing a
+  // press inside a 300ms discovery stop would be felt immediately in a game built on rhythm.
   if (G.hitstop > 0) {
     G.hitstop -= dt;
-    if (G.hitstop > 0) { updateCosmetic(G, dt * 0.12); return; }
+    dt *= 0.035;
   }
 
   switch (G.mode) {
@@ -569,6 +596,24 @@ function updateDepot(G, dt, input) {
 function updateRun(G, dt, input) {
   const p = G.player, world = G.world;
   G.runT += dt;
+  G.mouseWorld = { x: input.mx + G.cam.ix, y: input.my + G.cam.iy };
+
+  // Air moves toward the shaft. Rather than draw an arrow on the HUD, we let the player feel a
+  // draft: motes drift in the direction of the way down. GDD §7 lists airflow as a real clue, so
+  // this is the same grammar being used for navigation instead of for treasure.
+  G.draftT = (G.draftT || 0) - dt;
+  if (G.draftT <= 0) {
+    G.draftT = 0.16 + G.rand.f() * 0.2;
+    const sx = world.shaftTX * TS + TS / 2, sy = (world.shaftTY + 1) * TS;
+    const dx = sx - p.x, dy = sy - p.y;
+    const d = Math.hypot(dx, dy);
+    if (d > 60 && d < 900) {
+      const ox = p.x + (G.rand.f() - 0.5) * 200, oy = p.y - 20 + (G.rand.f() - 0.5) * 130;
+      if (world.get(Math.floor(ox / TS), Math.floor(oy / TS)) === T.AIR) {
+        G.fx.motes(ox, oy, dx / d, dy / d, 1);
+      }
+    }
+  }
 
   if (input.pressed('pause') && G.mode === 'run') { G.mode = 'pause'; audio.ui('open'); return; }
   if (input.pressed('mute')) { G.muted = !G.muted; audio.setMuted(G.muted); SaveMod.save(G); }
@@ -611,7 +656,7 @@ function updateRun(G, dt, input) {
     const dx = e.x - p.x, dy = e.y - p.y;
     if (dx * dx + dy * dy > 460 * 460) continue;           // sleep far-away creatures
     Enemies.update(e, dt, ectx);
-    if (e.gone) G.enemies.splice(i, 1);
+    if (isGone(e)) G.enemies.splice(i, 1);
   }
 
   updateBombs(G, dt);
@@ -624,6 +669,10 @@ function updateRun(G, dt, input) {
         p.refillLight(28); audio.pickup('oil', 0);
         G.fx.popup(o.x, o.y, '+LIGHT', '#ffcf8a', {});
         return;
+      }
+      if (!G.tutorialShown.firstOre) {
+        G.tutorialShown.firstOre = 1;
+        msg(G, 'E AT THE LIFT TO BANK IT - NOTHING COUNTS UNTIL YOU SURFACE', '#7ff0a0');
       }
       p.pickupStreak = Math.min(24, p.pickupStreak + 1);
       p.pickupStreakT = 1.2;

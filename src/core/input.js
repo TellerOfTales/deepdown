@@ -13,7 +13,7 @@ const MAP = {
   interact:['KeyE', 'Enter', 'NumpadEnter'],
   confirm: ['Enter', 'NumpadEnter', 'KeyE'],
   cancel:  ['Escape', 'Backspace'],
-  journal: ['KeyJ'],
+  journal: ['Tab', 'KeyB'],
   pause:   ['Escape'],
   restart: ['KeyR'],
   dim:     ['KeyF'],
