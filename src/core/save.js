@@ -25,7 +25,13 @@ export function load() {
                    .filter(j => j && typeof j.id === 'string')
         : [],
       discoveries: Array.isArray(d.discoveries) ? d.discoveries : [],
-      stats: Object.assign(base.stats, d.stats || {}),
+      // Coerce: a stat that came back as a string would string-concatenate on the next
+      // `banked += amount` and the lifetime figure would never recover.
+      stats: (() => {
+        const src = d.stats || {}, out = base.stats;
+        for (const k in out) out[k] = Number(src[k]) || 0;
+        return out;
+      })(),
       muted: !!d.muted,
     };
   } catch (e) { return EMPTY(); }

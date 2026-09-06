@@ -73,7 +73,7 @@ export function newGame() {
     ui: { sel: 0, tab: 0, scroll: 0 },
     shaft: { open: false, choice: 1, near: null },
     flash: { color: '#ffffff', a: 0 },
-    vignette: 0, hitstop: 0, danger: 0,
+    vignette: 0, hitstop: 0, danger: 0, abandonHold: 0,
     aim: null, deathCause: '', deathRecorded: false, lastRun: null,
     sonar: { t: 0, x: 0, y: 0, r: 0 },
     rand: new Rand(1),
@@ -232,7 +232,7 @@ function tileCentre(tx, ty) { return [tx * TS + TS / 2, ty * TS + TS / 2]; }
 /** Enemy modules differ on how they mark a corpse; accept any of the usual spellings. */
 export function isGone(e) {
   return !!(e.gone || e.removed || e.despawn || e.remove ||
-            (e.dead && (e.deathT === undefined ? true : e.deathT > 0.55)));
+            (e.dead && (e.deadT === undefined ? true : e.deadT > 0.55)));
 }
 
 /**
@@ -750,8 +750,17 @@ function updateTitle(G, dt, input) {
 }
 
 function updatePause(G, dt, input) {
-  if (input.pressed('pause') || input.pressed('cancel')) { G.mode = 'run'; audio.ui('close'); }
-  else if (input.pressed('abandon')) { die(G, 'you turned back'); G.mode = 'death'; }
+  if (input.pressed('pause') || input.pressed('cancel')) { G.mode = 'run'; G.abandonHold = 0; audio.ui('close'); return; }
+  // Q fires the Extraction Beacon in-run (banks everything) and abandons the run here (loses
+  // everything). A single tap must never be able to mean both, so abandoning is a HOLD.
+  if (input.held('abandon')) {
+    G.abandonHold = (G.abandonHold || 0) + dt;
+    if (G.abandonHold > 1.15) {
+      G.abandonHold = 0;
+      if (!G.deathRecorded) { G.deathRecorded = true; die(G, 'you turned back'); }
+      G.mode = 'death';
+    }
+  } else G.abandonHold = 0;
 }
 
 function updateDeath(G, dt, input) {
@@ -764,6 +773,10 @@ function updateDepot(G, dt, input) {
   if (input.pressed('up')) { G.ui.sel = (G.ui.sel + n - 1) % n; audio.ui('move'); }
   if (input.pressed('down')) { G.ui.sel = (G.ui.sel + 1) % n; audio.ui('move'); }
   if (input.pressed('journal') && !input.held('dig')) { G.mode = 'journal'; audio.ui('open'); return; }
+  // DIG starts the run and nothing else. 'confirm' also reports a mouse click and a touch DIG
+  // tap, so without this the same edge bought whatever the cursor was parked on — and the
+  // cursor is deliberately parked on the priciest thing the player can only just afford.
+  if (input.pressed('dig') || input.pressed('jump')) { audio.ui('confirm'); startRun(G); return; }
   if (input.pressed('confirm')) {
     const u = UPGRADES[G.ui.sel];
     const l = lvl(G, u.id);
@@ -775,7 +788,6 @@ function updateDepot(G, dt, input) {
       msg(G, u.name + ' ' + (l + 1), '#7ff0a0');
     } else audio.ui('deny');
   }
-  if (input.pressed('dig') || input.pressed('jump')) { audio.ui('confirm'); startRun(G); }
 }
 
 function updateRun(G, dt, input) {
@@ -827,9 +839,9 @@ function updateRun(G, dt, input) {
   // shaft prompt owns the input while it is open
   if (G.mode === 'shaft') { updateShaft(G, dt, input); return; }
 
-  if (input.pressed('util')) useBomb(G);
+  if (input.touch && input.touch._putil) useUtility(G);      // the single touch button
+  else if (input.pressed('util')) useBomb(G);
   if (input.pressed('sonar')) useSonar(G);
-  if (input.touch && input.touch._putil) useUtility(G);
 
   const pctx = playerCtx(G);
   if (!p.dead) p.update(dt, input, world, pctx);

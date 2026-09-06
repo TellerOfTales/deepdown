@@ -540,7 +540,7 @@ function creatures(G) {
     if (at(G, x, y) !== T.AIR || !TILES[at(G, x, y + 1)].solid) continue;
     if (at(G, x - 1, y) !== T.AIR || at(G, x + 1, y) !== T.AIR) continue;
     if (Math.abs(x - G.world.entryTX) < 14 && Math.abs(y - G.world.entryTY) < 10) continue;
-    G.world.spawns.push({ type: 'stoneback', tx: x, ty: y - 1 });
+    G.world.spawns.push({ type: 'stoneback', tx: x, ty: y });   // ty is the air tile whose bottom edge is the floor
     for (let k = 0; k < 5; k++) deco(G, x + rand.i(-4, 4), y + rand.i(-1, 1), D.SCRATCH);
     n++;
   }

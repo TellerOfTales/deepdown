@@ -95,6 +95,8 @@ function touching(e, p) {
 function art(type, state) {
   const set = ENEMY_ART && ENEMY_ART[type];
   if (!set) return null;
+  // The wind-up must not look like the walk cycle, or the lunge has no tell at all.
+  if (type === 'burrower' && state === 'rear') return set.lunge || set.move;
   return set[state] || set.move || set.walk || set.fly || set.cling || set.dormant || null;
 }
 
@@ -126,7 +128,11 @@ export function update(e, dt, ctx) {
     case 'glowmoth': glowmoth(e, dt, ctx, world, p); break;
     case 'mimic': mimic(e, dt, ctx, world, p); break;
   }
-  unstick(e, world);
+  // The mimic and the burrower LIVE in solid rock — that is their entire design. Evicting
+  // them popped the mimic out of its own fake seam into the nearest corridor (so the "those
+  // were not flecks" reveal could never happen as authored) and teleported the burrower out
+  // of the wall instead of letting it swim, chew a trackable tunnel and trail dust.
+  if (e.type !== 'burrower' && e.type !== 'mimic') unstick(e, world);
 
   // contact
   if (e.contactDmg > 0 && e.cool <= 0 && !p.dead && touching(e, p)) {
@@ -167,7 +173,6 @@ function burrower(e, dt, ctx, world, p) {
       const a = Math.atan2((p.y - p.h * 0.4) - e.y, p.x - e.x);
       e.vx = Math.cos(a) * 210; e.vy = Math.sin(a) * 150 - 40;
       e.facing = Math.sign(e.vx) || e.facing;
-      if (ctx.audio) ctx.audio.danger('enemy_alert');
     }
     return;
   }
@@ -195,7 +200,8 @@ function burrower(e, dt, ctx, world, p) {
       e.vx += Math.sign(p.x - e.x) * 190 * dt;
       e.vx = clamp(e.vx, -70, 70);
       e.facing = Math.sign(e.vx) || e.facing;
-      if (near < 58 && e.stateT > 0.4) setState(e, 'rear');
+      // The warning belongs to the wind-up, not to the attack it is supposed to warn about.
+      if (near < 58 && e.stateT > 0.4) { setState(e, 'rear'); if (ctx.audio) ctx.audio.danger('enemy_alert'); }
     } else e.vx *= 0.9;
     move(e, world, dt);
   }
@@ -310,7 +316,8 @@ function glowmoth(e, dt, ctx, world, p) {
   e.facing = e.vx >= 0 ? 1 : -1;
   if (solidBox(world, e.x, e.y, e.w, e.h)) { e.vx = -e.vx; e.vy = -e.vy; unstick(e, world); }
 
-  if (d < 12 && e.cool <= 0 && !p.dead) {
+  const dc = Math.hypot(p.x - e.x, (p.y - p.h * 0.7) - e.y);
+  if (dc < 13 && e.cool <= 0 && !p.dead) {
     e.cool = 0.9;
     p.light = Math.max(0, p.light - 7);
     if (ctx.fx) ctx.fx.sparks(e.x, e.y, P.CYAN4, 5, 0, 0);
@@ -367,7 +374,10 @@ export function hurt(e, dmg, dirX, dirY, ctx) {
     if (ctx && ctx.msg && !e.taughtArmor) { e.taughtArmor = 1; ctx.msg('THE FRONT IS STONE - GET BEHIND IT', '#ff9b2e'); }
     if (ctx && ctx.learn) ctx.learn('stoneback');
     e.hitFlash = 0.35;
-    e.hp -= real;
+    // Clamp, do not accumulate: unbounded negative hp meant a face-only attack could never
+    // kill it, and then one feather tap on the back could — which turns "let it commit, then
+    // take the back" into "chip it, then tap it".
+    e.hp = Math.max(1, e.hp - real);
     return false;
   }
 

@@ -351,5 +351,11 @@ export function drawPause(g, G, dt) {
   let y = 96;
   for (const l of lines) { text(g, l, VW / 2 - 110, y, { color: P.UI_DIM }); y += 11; }
   text(g, 'ESC  RESUME', VW / 2, VH - 34, { color: P.UI_GOOD, align: 'center', scale: 2 });
-  text(g, 'Q  ABANDON RUN  (LOSE THE HAUL)', VW / 2, VH - 14, { color: P.UI_DANGER, align: 'center' });
+  const hold = clamp((G.abandonHold || 0) / 1.15, 0, 1);
+  text(g, hold > 0 ? 'KEEP HOLDING...' : 'HOLD Q  ABANDON RUN  (LOSE THE HAUL)',
+    VW / 2, VH - 14, { color: P.UI_DANGER, align: 'center' });
+  if (hold > 0) {
+    g.fillStyle = P.UI_DARK; g.fillRect(VW / 2 - 60, VH - 5, 120, 3);
+    g.fillStyle = P.UI_DANGER; g.fillRect(VW / 2 - 60, VH - 5, Math.round(120 * hold), 3);
+  }
 }

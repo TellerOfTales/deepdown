@@ -823,7 +823,7 @@ const MIMIC_PAL = {
 
 /** Indistinguishable from a gold seam. A branching vein in host rock, no symmetry, no face. */
 export const MIMIC_DORMANT = {
-  pal: MIMIC_PAL, ox: 8, oy: 15, fps: 1,
+  pal: MIMIC_PAL, ox: 8, oy: 16, fps: 1,
   frames: [
     [ "qrrRrrrrRrrrrRrq",
       "rrRrrrqrrrRrrrrr",
@@ -846,7 +846,7 @@ export const MIMIC_DORMANT = {
 
 /** The seam splits, gum floods in, the gold resolves into teeth and two eyes open. Plays once. */
 export const MIMIC_WAKE = {
-  pal: MIMIC_PAL, ox: 8, oy: 15, fps: 14, loop: false,
+  pal: MIMIC_PAL, ox: 8, oy: 16, fps: 14, loop: false,
   frames: [
     [ "qrrRrrrrRrrrrRrq",
       "rrRrrrqrrrRrrrrr",
@@ -901,7 +901,7 @@ export const MIMIC_WAKE = {
 
 /** Snap. Frame 1 has the teeth fully interlocked — the shape a bear trap makes. */
 export const MIMIC_BITE = {
-  pal: MIMIC_PAL, ox: 8, oy: 15, fps: 16,
+  pal: MIMIC_PAL, ox: 8, oy: 16, fps: 16,
   frames: [
     [ "qrrRrrrrRrrrrRrq",
       "rrRrrrqrrrRrrrrr",
@@ -940,7 +940,7 @@ export const MIMIC_BITE = {
 
 /** Hit: teeth broken out to raw FLSH1/FLSH2, eyes dimmed. */
 export const MIMIC_HURT = {
-  pal: MIMIC_PAL, ox: 8, oy: 15, fps: 1,
+  pal: MIMIC_PAL, ox: 8, oy: 16, fps: 1,
   frames: [
     [ "qrrRrrrrRrrrrRrq",
       "rrRrrrqrrrRrrrrr",
