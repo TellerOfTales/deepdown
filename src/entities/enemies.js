@@ -37,7 +37,7 @@ export function spawn(type, x, y, threat) {
     emissive: d.emissive, gravity: d.gravity,
     anchorTX: Math.floor(x / TS), anchorTY: Math.floor(y / TS) - 1,
     homeX: x, homeY: y, seed: (hashf(x | 0, y | 0, 77) * 1000) | 0,
-    threat: threat || 1, touchT: 0,
+    threat: threat || 1, touchT: 0, hidden: false,
   };
   switch (type) {
     case 'burrower': e.state = 'swim'; break;
@@ -339,6 +339,10 @@ function mimic(e, dt, ctx, world, p) {
   e.facing = p.x >= e.x ? 1 : -1;
   if (e.state === 'dormant') {
     e.contactDmg = 0;
+    // While the seam it is hiding in is still standing, the TILE is the disguise — drawing a
+    // sprite of rock-and-gold on top of a tile of rock-and-gold only gives the trick away.
+    // If the player has already mined the seam out from around it, it has nowhere left to hide.
+    e.hidden = world.get(Math.floor(e.x / TS), Math.floor((e.y - e.h * 0.5) / TS)) === T.MIMIC;
     if (d < TS * 1.4) e.aggro += dt; else e.aggro = Math.max(0, e.aggro - dt * 2);
     if (e.aggro > 0.55) {
       setState(e, 'wake');
@@ -349,6 +353,7 @@ function mimic(e, dt, ctx, world, p) {
     }
     return;
   }
+  e.hidden = false;
   if (e.state === 'wake') {
     e.contactDmg = 0;
     if (e.stateT > 0.45) setState(e, 'bite');
@@ -425,6 +430,7 @@ export function hurt(e, dmg, dirX, dirY, ctx) {
 
 // ── drawing ───────────────────────────────────────────────────────────────────
 export function draw(g, e, camX, camY) {
+  if (e.hidden) return;
   const spr = art(e.type, e.state === 'idle' ? 'move' : e.state);
   if (!spr) return;
   const x = Math.round(e.x - camX);
@@ -441,7 +447,7 @@ export function draw(g, e, camX, camY) {
 }
 
 export function drawGlow(g, e, camX, camY) {
-  if (!e.emissive || e.dead) return;
+  if (!e.emissive || e.dead || e.hidden) return;
   const x = Math.round(e.x - camX), y = Math.round(e.y - camY - e.h * 0.6);
   let col = null, r = 0;
   if (e.type === 'glowmoth') { col = P.CYAN4; r = 7; }
