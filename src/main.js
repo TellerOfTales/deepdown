@@ -7,7 +7,7 @@ import { drawHUD, drawShaftPrompt, hudUpdate } from './ui/hud.js';
 import { drawTitle, drawDepot, drawDeath, drawJournal, drawPause, screensUpdate } from './ui/screens.js';
 import {
   drawParallax, drawTiles, drawProps, drawLoot, drawPlayer, drawEnemies, drawEnemyGlow,
-  drawAimCursor, drawVeinArrows, drawLighting, drawGlow, drawVignette, drawFlash,
+  drawAimCursor, drawVeinArrows, drawLighting, drawGlow, drawVignette, drawFlash, drawFleckGlints,
 } from './render.js';
 import { P } from './art/pal.js';
 import { pixelRing } from './fx/particles.js';
@@ -85,6 +85,7 @@ function drawRun(withHud) {
   drawLighting(g, G);
   drawGlow(g, G);
   drawEnemyGlow(g, G);
+  drawFleckGlints(g, G);
   G.fx.drawGlow(g, G.cam.ix, G.cam.iy);
   drawSonar();
   drawVeinArrows(g, G);

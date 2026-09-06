@@ -288,6 +288,44 @@ function glowSprite(hex) {
   return c;
 }
 
+/**
+ * PROSPECTOR'S EYE. "Faint gold flecks read at twice the distance."
+ *
+ * Without this the upgrade set a number nothing read. It is an INFORMATION upgrade, so it does
+ * not brighten the mine or extend the lantern — it makes the flecks themselves catch the light
+ * at brightness levels where you would otherwise walk straight past them.
+ */
+export function drawFleckGlints(g, G) {
+  const eye = G.player.fleckRange | 0;
+  if (eye <= 1) return;
+  const world = G.world, lf = G.lf;
+  const camX = G.cam.ix, camY = G.cam.iy;
+  const x0 = Math.max(0, Math.floor(camX / TS)), y0 = Math.max(0, Math.floor(camY / TS));
+  const x1 = Math.min(world.w - 1, Math.floor((camX + VW) / TS));
+  const y1 = Math.min(world.h - 1, Math.floor((camY + VH) / TS));
+  const floor = eye >= 3 ? 0.03 : 0.055;      // how faint a light still counts
+  const twinkle = Math.sin(G.t * 3.1);
+  g.save();
+  g.globalCompositeOperation = 'lighter';
+  for (let ty = y0; ty <= y1; ty++) {
+    const row = ty * world.w;
+    for (let tx = x0; tx <= x1; tx++) {
+      const d = world.deco[row + tx];
+      if (d !== D.FLECK_RICH && d !== D.FLECK_FAINT && d !== D.GEMGLINT) continue;
+      const b = lf.sample(tx, ty);
+      if (b < floor || b > 0.75) continue;    // already obvious in good light
+      const rich = d === D.FLECK_RICH;
+      g.globalAlpha = (rich ? 0.55 : 0.34) * (0.7 + 0.3 * Math.sin(G.t * 4 + tx + ty)) * (1 - b);
+      g.fillStyle = d === D.GEMGLINT ? P.GEM4 : P.GOLD4;
+      const px = tx * TS - camX + 4 + ((tx * 5 + ty * 3) % 7);
+      const py = ty * TS - camY + 4 + ((tx * 3 + ty * 7) % 7);
+      g.fillRect(px, py, rich ? 2 : 1, rich ? 2 : 1);
+      if (rich && twinkle > 0.6) g.fillRect(px - 1, py + 1, 1, 1);
+    }
+  }
+  g.restore();
+}
+
 export function drawVignette(g, G) {
   const v = G.vignette;
   if (v <= 0.01) return;
