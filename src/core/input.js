@@ -121,6 +121,12 @@ export class Input {
     return null;
   }
 
+  /** True only for a real keyboard edge on one of these codes — never a mouse or touch alias. */
+  pressedKey(codes) {
+    for (const k of codes) if (this.pressedSet.has(k)) return true;
+    return false;
+  }
+
   held(a) {
     const keys = MAP[a];
     if (keys) for (const k of keys) if (this.down.has(k)) return true;

@@ -141,6 +141,11 @@ export function startRun(G, seed) {
   G.deathCause = '';
   G.deathRecorded = false;
   G.tutorialShown = {};
+  // The whole feel layer, not just the simulation: dying inside a discovery hitstop and
+  // hammering R used to start the next run at 3.5% speed under the last run's callout.
+  G.hitstop = 0; G.flash.a = 0; G.callout = null; G.msgs.length = 0;
+  G.danger = 0; G.vignette = 0; G.bagWarned = 0; G.abandonHold = 0;
+  G.sonar.t = 0; G.sonarMapped = false;
   const p = G.player;
   p.reset(0, 0);
   applyUpgrades(G);
@@ -229,6 +234,14 @@ export function die(G, cause) {
 // ── strike resolution: the composition layer ──────────────────────────────────
 function tileCentre(tx, ty) { return [tx * TS + TS / 2, ty * TS + TS / 2]; }
 
+/** Top of the first solid tile below (tx,ty), in world px — or null if there is none nearby. */
+function floorUnder(world, tx, ty) {
+  for (let k = 0; k <= 5; k++) {
+    if (world.solid(tx, ty + k)) return (ty + k) * TS - 1;
+  }
+  return null;
+}
+
 /** Enemy modules differ on how they mark a corpse; accept any of the usual spellings. */
 export function isGone(e) {
   return !!(e.gone || e.removed || e.despawn || e.remove ||
@@ -246,7 +259,7 @@ export function isGone(e) {
  * Returns 0 if the space reaches daylight or the map edge — breaking through to the sky is not
  * a discovery, and rewarding it would teach exactly the wrong lesson.
  */
-function cavitySize(world, tx, ty, cap) {
+function cavitySize(world, tx, ty, cap, ptx, pty) {
   if (world.get(tx, ty) !== T.AIR) return 0;
   const seen = new Set();
   const stack = [tx, ty];
@@ -258,6 +271,10 @@ function cavitySize(world, tx, ty, cap) {
     if (seen.has(k)) continue;
     if (world.get(x, y) !== T.AIR) continue;
     if (y <= 4) return 0;                       // daylight, not a discovery
+    // ...and neither is the hole you are standing in. Relying on the flood reaching daylight
+    // was not enough: once your own excavation exceeds the cap, the flood runs out before it
+    // can climb back to the alcove and every pillar you break reports a chamber.
+    if (x === ptx && y === pty) return 0;
     seen.add(k); n++;
     stack.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1);
   }
@@ -270,21 +287,6 @@ function addHaul(G, kind, value) {
   G.haul += value;
   G.haulItems[kind] = (G.haulItems[kind] | 0) + 1;
   G.weight += w;
-}
-
-function dropWorst(G) {
-  let worst = -1, worstRatio = Infinity;
-  for (let i = 0; i < G.carried.length; i++) {
-    const c = G.carried[i];
-    const r = c.w <= 0 ? Infinity : c.value / c.w;
-    if (r < worstRatio) { worstRatio = r; worst = i; }
-  }
-  if (worst < 0) return null;
-  const c = G.carried.splice(worst, 1)[0];
-  G.haul -= c.value;
-  G.weight -= c.w;
-  G.haulItems[c.kind] = Math.max(0, (G.haulItems[c.kind] | 0) - 1);
-  return c;
 }
 
 /**
@@ -390,7 +392,15 @@ export function resolveStrike(G, info) {
   // Read the clue off the face BEFORE the pick removes it.
   const seedDeco = world.getDeco(info.tx, info.ty);
   const seedDeco2 = info.second >= 0 ? world.getDeco(info.tx, info.second) : 0;
-  const seedCavity = hollow ? cavitySize(world, bx, by, 240) : 0;
+  const ptx = Math.floor(p.x / TS), pty = Math.floor((p.y - p.h * 0.5) / TS);
+  const seedCavity = hollow ? cavitySize(world, bx, by, 240, ptx, pty) : 0;
+  // A sideways swing can break through on its LOWER row; that opening deserves the same payoff.
+  let hollow2 = false, seedCavity2 = 0;
+  if (info.second >= 0 && info.dy === 0) {
+    const t2 = world.get(info.tx, info.second);
+    hollow2 = TILES[t2].solid && world.get(bx, info.second) === T.AIR;
+    if (hollow2) seedCavity2 = cavitySize(world, bx, info.second, 240, ptx, pty);
+  }
 
   const res = world.strike(info.tx, info.ty, info.power, info.damage, { crit: info.crit });
 
@@ -400,7 +410,7 @@ export function resolveStrike(G, info) {
   if (info.second >= 0 && info.dy === 0) {
     const r2 = world.strike(info.tx, info.second, info.power, info.damage * CFG.sideSpill, { crit: info.crit });
     if (r2.broke && r2.broken && r2.broken.length) {
-      handleBreaks(G, r2.broken, { tx: info.tx, ty: info.second, dx: info.dx, dy: 0, crit: info.crit, combo: info.combo }, false, seedDeco2, 0);
+      handleBreaks(G, r2.broken, { tx: info.tx, ty: info.second, dx: info.dx, dy: 0, crit: info.crit, combo: info.combo }, seedDeco2, seedCavity2);
     }
   }
 
@@ -441,7 +451,7 @@ export function resolveStrike(G, info) {
   G.cam.addShake(info.heavy ? CFG.shakeHeavy : info.crit ? CFG.shakeCrit : CFG.shakeTap);
   G.cam.punch(info.dx, info.dy, CFG.camPunch * (info.heavy ? 1.5 : info.crit ? 1.1 : 0.6));
   G.hitstop = Math.max(G.hitstop, info.crit ? CFG.hitstopCrit : CFG.hitstopTap);
-  fxStrike(fx, hx, hy, tinfo, info.dx, info.dy, info.crit);
+  fxStrike(fx, hx, hy, tinfo, info.dx, info.dy, info.crit, floorUnder(world, info.tx, info.ty));
 
   if (hollow) {
     // The Resonance Kit turns the audio tell into a visible one. An information upgrade, not a stat.
@@ -452,10 +462,10 @@ export function resolveStrike(G, info) {
   if (!res.broke) return;
 
   // --- the POP ---
-  handleBreaks(G, res.broken, info, hollow, seedDeco, seedCavity);
+  handleBreaks(G, res.broken, info, seedDeco, seedCavity);
 }
 
-function handleBreaks(G, broken, info, hollow, seedDeco, seedCavity) {
+function handleBreaks(G, broken, info, seedDeco, seedCavity) {
   const world = G.world, p = G.player, fx = G.fx;
   let valueGained = 0, best = null, shear = 0, chain = 0;
   seedDeco = seedDeco || 0;
@@ -466,7 +476,7 @@ function handleBreaks(G, broken, info, hollow, seedDeco, seedCavity) {
     const [bx, by] = tileCentre(b.tx, b.ty);
     if (b.cause === 'shear') shear++;
     if (b.cause === 'chain') chain++;
-    fxBreak(fx, bx, by, bi, { big: bi.hp >= 6, shear: b.cause === 'shear', chain: b.cause === 'chain' });
+    fxBreak(fx, bx, by, bi, { big: bi.hp >= 6, shear: b.cause === 'shear', chain: b.cause === 'chain', floorY: floorUnder(world, b.tx, b.ty) });
     G.stats.tilesBroken++;
 
     if (bi.item && bi.value > 0) {
@@ -612,7 +622,7 @@ export function useSonar(G) {
   const p = G.player;
   if (p.charges.sonar <= 0) { audio.ui('deny'); return; }
   p.charges.sonar--;
-  G.sonar.t = 3.2; G.sonar.x = p.x; G.sonar.y = p.cy; G.sonar.r = 0;
+  G.sonar.t = 3.2; G.sonar.x = p.x; G.sonar.y = p.cy; G.sonar.r = 0; G.sonarMapped = false;
   audio.discovery(1);
   msg(G, 'SONAR', '#7fd0f0');
 }
@@ -643,7 +653,7 @@ function updateBombs(G, dt) {
       if (!TILES[G.world.get(tx, ty)].diggable) continue;
       G.world.breakAt(tx, ty, 'collapse', 2, false, broken, 0);
     }
-    handleBreaks(G, broken, { tx: ctx.tx, ty: ctx.ty, dx: 0, dy: 0, crit: false, combo: 0 }, false, 0, 0);
+    handleBreaks(G, broken, { tx: ctx.tx, ty: ctx.ty, dx: 0, dy: 0, crit: false, combo: 0 }, 0, 0);
     fxCollapse(G.fx, b.x, b.y, 30);
     G.cam.addShake(CFG.shakeCollapse);
     G.hitstop = Math.max(G.hitstop, 0.09);
@@ -670,7 +680,7 @@ function enemyCtx(G) {
       G.world.breakAt(tx, ty, 'collapse', 0.4, false, out, 0);
       for (const b of out) {
         const [x, y] = tileCentre(b.tx, b.ty);
-        fxBreak(G.fx, x, y, TILES[b.tile], {});
+        fxBreak(G.fx, x, y, TILES[b.tile], { floorY: floorUnder(G.world, b.tx, b.ty) });
         if (TILES[b.tile].item && TILES[b.tile].value > 0) {
           G.loot.spawn(x, y, TILES[b.tile].item, Math.round(TILES[b.tile].value * G.world.stratum.valueMul), G.rand, 0, 0);
         }
@@ -732,10 +742,12 @@ function updateCosmetic(G, dt) {
   if (G.sonar.t > 0) { G.sonar.t -= dt; G.sonar.r += dt * 260; }
   // Vein chevrons are simulation state, not a draw-time effect: aged here they stop ticking
   // during a pause and slow correctly through hitstop, like everything else.
-  for (let i = G.veinHints.length - 1; i >= 0; i--) {
-    const h = G.veinHints[i];
-    h.t += dt;
-    if (h.t > h.life) G.veinHints.splice(i, 1);
+  if (G.mode !== 'pause') {
+    for (let i = G.veinHints.length - 1; i >= 0; i--) {
+      const h = G.veinHints[i];
+      h.t += dt;
+      if (h.t > h.life) G.veinHints.splice(i, 1);
+    }
   }
   G.fx.update(dt);
   G.cam.update(dt);
@@ -773,11 +785,8 @@ function updateDepot(G, dt, input) {
   if (input.pressed('up')) { G.ui.sel = (G.ui.sel + n - 1) % n; audio.ui('move'); }
   if (input.pressed('down')) { G.ui.sel = (G.ui.sel + 1) % n; audio.ui('move'); }
   if (input.pressed('journal') && !input.held('dig')) { G.mode = 'journal'; audio.ui('open'); return; }
-  // DIG starts the run and nothing else. 'confirm' also reports a mouse click and a touch DIG
-  // tap, so without this the same edge bought whatever the cursor was parked on — and the
-  // cursor is deliberately parked on the priciest thing the player can only just afford.
-  if (input.pressed('dig') || input.pressed('jump')) { audio.ui('confirm'); startRun(G); return; }
-  if (input.pressed('confirm')) {
+
+  const buy = () => {
     const u = UPGRADES[G.ui.sel];
     const l = lvl(G, u.id);
     if (l >= u.max) { audio.ui('deny'); return; }
@@ -787,7 +796,24 @@ function updateDepot(G, dt, input) {
       applyUpgrades(G); audio.ui('buy'); SaveMod.save(G);
       msg(G, u.name + ' ' + (l + 1), '#7ff0a0');
     } else audio.ui('deny');
+  };
+
+  // A pointer needs a target, not an alias. 'dig' and 'confirm' BOTH report a click and a touch
+  // tap, so routing the Depot through them made every tap mean whichever branch came first.
+  // Hit-test instead: the descend bar plays, an upgrade row selects and buys.
+  if (input.mpressed || input.touch._pdig) {
+    const mx = input.mx, my = input.my;
+    if (my >= VH - 36 && my <= VH - 10) { audio.ui('confirm'); startRun(G); return; }
+    const row = Math.floor((my - 42) / 13);
+    if (mx >= 8 && mx <= 280 && row >= 0 && row < UPGRADES.length) {
+      if (row !== G.ui.sel) { G.ui.sel = row; audio.ui('move'); }
+      else buy();
+    }
+    return;
   }
+  // Keyboard: SPACE/K descend, ENTER buys. Tested on the raw codes so a click cannot alias in.
+  if (input.pressedKey(['Space', 'KeyZ', 'KeyK', 'KeyX']) ) { audio.ui('confirm'); startRun(G); return; }
+  if (input.pressedKey(['Enter', 'NumpadEnter', 'KeyE'])) buy();
 }
 
 function updateRun(G, dt, input) {
@@ -928,7 +954,13 @@ function updateRun(G, dt, input) {
     for (let dy = -15; dy <= 15; dy++) for (let dx = -15; dx <= 15; dx++) {
       if (dx * dx + dy * dy > 225) continue;
       const sx = tx0 + dx, sy = ty0 + dy;
-      if (sx >= 0 && sy >= 0 && sx < world.w && sy < world.h) world.seen[sy * world.w + sx] = 255;
+      if (sx < 0 || sy < 0 || sx >= world.w || sy >= world.h) continue;
+      // Only the seams and cavities the pulse actually draws. Marking all 700 tiles seen would
+      // turn one charge into a permanent minimap, and darkness is the compositional tool.
+      const id = world.mat[sy * world.w + sx];
+      if (id === T.ORE_GOLD || id === T.ORE_GEM || id === T.CRYSTAL || id === T.RELIC) {
+        world.seen[sy * world.w + sx] = 255;
+      }
     }
   }
   if (G.sonar.t <= 0) G.sonarMapped = false;
@@ -966,6 +998,9 @@ function updateRun(G, dt, input) {
 
   if (G.shaft.near && input.pressed('interact') && !p.dead) {
     if (G.shaft.near === 'entry') {
+      // Enter is the key that just started the run. Riding the lift up with nothing in the bag
+      // is not a thing anyone means to do, and there is no prompt offering it.
+      if (G.haul <= 0) return;
       bankRun(G, 'walked out');
       msg(G, 'EXTRACTED', '#7ff0a0');
     } else {
@@ -1000,9 +1035,9 @@ function updateShaft(G, dt, input) {
       G.player.tool = Math.min(G.player.toolMax, G.player.tool + G.player.toolMax * 0.45);
       enterStratum(G, next);
       const s = STRATA[next];
+      learn(G, 'depth');       // before the banner: G.callout is a single slot
       callout(G, 'STRATUM ' + s.roman, s.name + ' - ' + s.tagline, '#ff9b2e', 2);
       msg(G, G.world.hint, '#8a8496');
-      learn(G, 'depth');
     }
   }
 }

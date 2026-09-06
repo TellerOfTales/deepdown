@@ -41,7 +41,7 @@ export class Loot {
       const dx = px - o.x, dy = py - o.y;
       const d2 = dx * dx + dy * dy;
 
-      if (o.reject > 0) o.reject -= dt;
+      if (o.reject > 0) { o.reject -= dt; o.mag = 0; }
       const reach = CFG.magnetRadius * (REACH[o.kind] || 1);
       if (o.t > 0.22 && o.reject <= 0 && d2 < reach * reach) {
         const d = Math.max(1, Math.sqrt(d2));
@@ -69,9 +69,14 @@ export class Loot {
       if (d2 < CFG.pickupRadius * CFG.pickupRadius && o.t > 0.14 && o.reject <= 0) {
         if (ctx.collect(o)) { this.pool.push(o); this.list.splice(i, 1); }
         else {
-          // Refused. Push it clear and give it a cooling-off period so it does not nag.
-          o.reject = 1.6;
-          o.vx = -dx * 1.6; o.vy = -Math.abs(dy) * 1.2 - 60;
+          // Refused. Throw it clear of its OWN magnet reach — the push used to be far weaker
+          // than the reach, so a rejected find trailed the player for the rest of the run,
+          // bumping them every couple of seconds and re-firing the bag-full warning.
+          const rr = CFG.magnetRadius * (REACH[o.kind] || 1);
+          const d = Math.max(1, Math.sqrt(d2));
+          o.reject = 2.4;
+          o.vx = -dx / d * rr * 1.6;
+          o.vy = -rr * 1.1;
           o.mag = 0;
         }
       }

@@ -31,8 +31,6 @@ export class World {
     this.liquidSet = new Set();
     this.settleTimer = 0;
     this.liquidTimer = 0;
-    this.emitters = [];                 // cached emissive tile list, rebuilt lazily
-    this.emitterDirty = true;
   }
 
   idx(tx, ty) { return ty * this.w + tx; }
@@ -49,7 +47,6 @@ export class World {
     this.mat[i] = id;
     this.dmg[i] = 0;
     this.deco[i] = 0;      // a clue belongs to the tile that carried it, not to the cell
-    this.emitterDirty = true;
   }
   setDeco(tx, ty, d) { if (this.inb(tx, ty)) this.deco[ty * this.w + tx] = d; }
   getDeco(tx, ty) { return this.inb(tx, ty) ? this.deco[ty * this.w + tx] : 0; }
@@ -106,7 +103,6 @@ export class World {
     this.mat[i] = T.AIR;
     this.dmg[i] = 0;
     this.deco[i] = D.NONE;
-    this.emitterDirty = true;
     out.push({ tx, ty, tile: t, cause });
 
     if (depth > 24 || out.length > 90) return out;
@@ -213,7 +209,6 @@ export class World {
         if (t === T.AIR || !TILES[t].loose) continue;
         if (this.get(tx, ty + 1) === T.AIR) {
           this.mat[k] = T.AIR; this.dmg[k] = 0; this.deco[k] = 0;
-          this.emitterDirty = true;
           this.falling.push({ tx, y: ty * TS, vy: 30, tile: t });
           events.push({ type: 'fall', tx, ty, tile: t });
           this.queueSettle(tx, ty);
@@ -227,7 +222,8 @@ export class World {
       let budget = 160;
       const wave = this.liquidQ;
       this.liquidQ = []; this.liquidSet = new Set();
-      for (let n = 0; n < wave.length && budget-- > 0; n++) {
+      let n = 0;
+      for (; n < wave.length && budget-- > 0; n++) {
         const k = wave[n];
         const tx = k % this.w, ty = (k / this.w) | 0;
         const t = this.mat[k];
@@ -239,10 +235,13 @@ export class World {
         } else {
           const order = hashf(tx, ty, 7) < 0.5 ? [-1, 1] : [1, -1];
           for (const d of order) {
-            // No support test: an unsupported neighbour is exactly the cell water should take
-            // first, and next tick's fall branch carries it down. Requiring a floor meant a
-            // pool sitting at the lip of a shaft never drained into it.
-            if (this.get(tx + d, ty) === T.AIR) {
+            // Step sideways only if the destination can fall from there, or if this tile is at
+            // the edge of a body rather than a lone tile with somewhere to bounce back to.
+            // Without the second clause two cells trade the same tile forever, which is why the
+            // map never settled; without the first, a pool will not travel to a lip it is not
+            // already touching, which is the bug this whole branch exists to fix.
+            if (this.get(tx + d, ty) === T.AIR &&
+                (this.get(tx + d, ty + 1) === T.AIR || this.get(tx - d, ty) !== T.AIR)) {
               this.set(tx, ty, T.AIR); this.set(tx + d, ty, t);
               this.pushLiquid(tx + d, ty); this.queueSettle(tx, ty);
               events.push({ type: 'flow', tx: tx + d, ty, tile: t });
@@ -251,22 +250,11 @@ export class World {
           }
         }
       }
+      // Carry the remainder rather than dropping it: pushLiquid order is row-major, so the
+      // discarded tail is the BOTTOM of a tall body — the only part that could have fallen.
+      for (; n < wave.length; n++) this.pushLiquid(wave[n] % this.w, (wave[n] / this.w) | 0);
     }
     return events;
   }
 
-  /** Emissive tiles inside a window, for the lighting pass. */
-  collectEmitters(x0, y0, x1, y1, out) {
-    out.length = 0;
-    for (let ty = y0; ty <= y1; ty++) {
-      if (ty < 0 || ty >= this.h) continue;
-      const row = ty * this.w;
-      for (let tx = x0; tx <= x1; tx++) {
-        if (tx < 0 || tx >= this.w) continue;
-        const e = TILES[this.mat[row + tx]].emit;
-        if (e > 0) out.push(tx, ty, e);
-      }
-    }
-    return out;
-  }
 }

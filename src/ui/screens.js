@@ -216,7 +216,7 @@ export function drawDepot(g, G, dt) {
   g.restore();
   g.strokeStyle = P.UI_GOLD; g.strokeRect(10.5, by + 0.5, VW - 21, bh - 1);
   text(g, 'SPACE   DESCEND', VW / 2, by + 6, { color: P.GOLD5, align: 'center', scale: 2, shadow: true });
-  text(g, 'UP/DOWN SELECT    ENTER BUY', VW / 2, VH - 8, { color: P.UI_DARK, align: 'center' });
+  text(g, 'UP/DOWN SELECT    ENTER BUY    OR CLICK', VW / 2, VH - 8, { color: P.UI_DARK, align: 'center' });
 }
 
 function shaftBackdropSoft(g) {

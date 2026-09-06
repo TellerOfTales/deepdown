@@ -117,7 +117,10 @@ function drawSonar() {
   g.save();
   g.globalCompositeOperation = 'lighter';
   g.fillStyle = 'rgba(127,208,240,0.5)';
-  pixelRing(g, Math.round(G.sonar.x - camX), Math.round(G.sonar.y - camY), r, 1);
+  const sx = Math.round(G.sonar.x - camX), sy = Math.round(G.sonar.y - camY);
+  // The wavefront outruns the viewport in about a second; past that every one of its ~4700
+  // fillRects lands off-screen, and this is a game whose loop is a rhythm.
+  if (sx + r >= 0 && sy + r >= 0 && sx - r <= VW && sy - r <= VH) pixelRing(g, sx, sy, r, 1);
   const R = 15;
   const tx0 = Math.floor(G.sonar.x / TS), ty0 = Math.floor(G.sonar.y / TS);
   for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {

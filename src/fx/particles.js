@@ -103,9 +103,10 @@ export class FX {
 
   /** Chunky fragments thrown AGAINST the swing. The bread and butter of every break. */
   debris(x, y, color, n, dirX, dirY, floorY) {
-    // Default to the bottom of the tile the fragment came from. Without a floor the bounce and
-    // settle branch is unreachable and every chip of rock in the game sinks through the ground.
-    if (floorY === undefined || floorY === null) floorY = Math.floor(y / 16) * 16 + 15;
+    // The caller passes the first solid surface below, because only it can see the world.
+    // undefined (no opinion) falls back to this tile's floor; explicit null means "nothing
+    // solid below" and the chips fall away, which is correct over an open shaft.
+    if (floorY === undefined) floorY = Math.floor(y / 16) * 16 + 15;
     const a = Math.atan2(-(dirY || 0), -(dirX || 0)) || -Math.PI / 2;
     this.burst(x, y, {
       color, n, angle: (dirX || dirY) ? a : -Math.PI / 2, spread: (dirX || dirY) ? 2.0 : Math.PI * 2,
@@ -264,7 +265,7 @@ export class FX {
         p.vx *= 0.7;
         if (Math.abs(p.vy) < 22) { p.vy = 0; p.ay = 0; p.floorY = null; }
       }
-      if (p.pop > 0) p.pop = Math.max(0, p.pop - dt * 9);
+      if (p.pop > 0) p.pop = Math.max(0, p.pop - dt * 5);
     }
   }
 
@@ -301,9 +302,11 @@ export class FX {
       if (p.shape === SHAPE.TEXT) {
         // 0.7, not 0.55: fx.update() runs in the same frame the popup is emitted, so by the
         // first draw pop is already ~0.85 and Math.round() flattened a scale-1 popup back to 1.
-        const sc = p.scale * (1 + p.pop * 0.7);
+        // ceil, not round: the pop decays fast, and on a 60 Hz display rounding turned the
+        // loop's exclamation mark into a single-frame flicker that was stronger at 144 Hz.
+        const sc = Math.ceil(p.scale * (1 + p.pop * 0.7) - 0.001);
         text(g, p.text, x, y, {
-          color: p.color, scale: Math.max(1, Math.round(sc)), align: 'center',
+          color: p.color, scale: Math.max(1, sc), align: 'center',
           shadow: p.size > 0, alpha: a,
         });
         curAlpha = -1; curColor = '';
@@ -367,9 +370,9 @@ export function pixelRing(g, cx, cy, r, thick) {
 // These are the ones the game calls a hundred times a minute. They are deliberate
 // compositions, not defaults with a colour swapped in.
 
-export function fxStrike(fx, x, y, tinfo, dirX, dirY, crit) {
+export function fxStrike(fx, x, y, tinfo, dirX, dirY, crit, floorY) {
   const c = tinfo.dust;
-  fx.debris(x, y, c, crit ? 6 : 3, dirX, dirY);
+  fx.debris(x, y, c, crit ? 6 : 3, dirX, dirY, floorY);
   fx.dust(x, y, c, 2);
   if (tinfo.spark) fx.sparks(x, y, P.STEEL4, crit ? 6 : 3, dirX, dirY);
   if (crit) {
@@ -383,7 +386,7 @@ export function fxBreak(fx, x, y, tinfo, o) {
   o = o || {};
   const c = tinfo.dust;
   const n = o.big ? 14 : o.chain ? 7 : 10;
-  fx.debris(x, y, c, n, 0, 0);
+  fx.debris(x, y, c, n, 0, 0, o.floorY);
   fx.dust(x, y, c, o.big ? 7 : 4);
   if (tinfo.fam === 'cyan' || tinfo.fam === 'gem') { fx.shards(x, y, c, 9); fx.ring(x, y, c, { r: 17, life: 0.3 }); }
   if (tinfo.fam === 'gold' || tinfo.fam === 'relic') { fx.glint(x, y, P.GOLD5); fx.ring(x, y, P.GOLD4, { r: 15, life: 0.28 }); }

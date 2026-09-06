@@ -132,7 +132,10 @@ export function update(e, dt, ctx) {
   // them popped the mimic out of its own fake seam into the nearest corridor (so the "those
   // were not flecks" reveal could never happen as authored) and teleported the burrower out
   // of the wall instead of letting it swim, chew a trackable tunnel and trail dust.
-  if (e.type !== 'burrower' && e.type !== 'mimic') unstick(e, world);
+  // Skip only while the burrower is actually SWIMMING. Skipping by type left it embedded the
+  // moment it surfaced part-way into a corridor: stuck forever, re-entering its wind-up on a
+  // loop, still dealing contact damage, never chewing the tunnel that makes it readable.
+  if (e.type !== 'mimic' && !(e.type === 'burrower' && e.state === 'swim')) unstick(e, world);
 
   // contact
   if (e.contactDmg > 0 && e.cool <= 0 && !p.dead && touching(e, p)) {
@@ -428,7 +431,10 @@ export function draw(g, e, camX, camY) {
   // Flying creatures are authored centre-anchored; ground creatures anchor at the feet.
   const y = Math.round(e.y - camY - (e.type === 'glowmoth' ? e.h / 2 : 0));
   const dying = e.dead ? clamp(1 - e.deadT / 0.55, 0, 1) : 1;
-  drawSprite(g, spr, frameAt(spr, e.t), x, y, {
+  // Non-looping sprites are driven off the STATE clock, or a lunge sits frozen on its last
+  // frame and the wind-up and the strike become the same picture.
+  const clock = spr.loop === false ? e.stateT : e.t;
+  drawSprite(g, spr, frameAt(spr, clock), x, y, {
     flip: e.facing < 0, flash: e.hitFlash, alpha: dying,
     scale: e.dead ? 1 + (1 - dying) * 0.4 : 1,
   });

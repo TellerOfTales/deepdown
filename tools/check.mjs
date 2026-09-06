@@ -280,8 +280,9 @@ if (script === 'play') {
   console.log('DESCEND', JSON.stringify(st));
 } else if (script === 'screens') {
   // Walk every full-screen state and the shaft decision, driving state directly through window.G
-  await page.keyboard.press('Enter');  await page.waitForTimeout(300);
+  // the first launch now goes straight into the ground, so pretend we have played before
   await page.evaluate(() => { window.G.bank = 8400; window.G.stats.runs = 7; window.G.stats.deepest = 148; window.G.stats.banked = 41200; });
+  await page.keyboard.press('Enter');  await page.waitForTimeout(300);
   await page.waitForTimeout(200); await shot('s1-depot');
   await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowDown'); await page.waitForTimeout(200);
   await shot('s2-depot-sel');
@@ -302,7 +303,7 @@ if (script === 'play') {
   await page.keyboard.press('KeyE'); await page.waitForTimeout(400); await shot('s5-shaft-prompt');
   await page.keyboard.press('ArrowUp'); await page.waitForTimeout(250); await shot('s6-shaft-extract');
   await page.keyboard.press('Backspace'); await page.waitForTimeout(250);
-  await page.evaluate(() => { window.G.runLearned = ['Flecks thicken toward the seam. Dig where they crowd.','A hairline in the face means open space behind it.','RECOVERED: HAND BELL']; window.G.player.hurt(9, 0, 0, null, 'a crawler'); window.G.deathCause = 'a crawler you never looked up at'; });
+  await page.evaluate(() => { window.G.runLearned = ['Flecks thicken toward the seam. Dig where they crowd.','A hairline in the face means open space behind it.','RECOVERED: HAND BELL']; window.G.player.invuln = 0; window.G.player.hurt(9, 0, 0, null, 'a crawler'); window.G.deathCause = 'a crawler you never looked up at'; });
   await page.waitForTimeout(1800); await shot('s7-death');
   await page.waitForTimeout(300);
   const st = await page.evaluate(() => ({ mode: window.G.mode, hp: window.G.player.hp, dead: window.G.player.dead, deadT: window.G.player.deadT, rec: window.G.deathRecorded, lastRun: !!window.G.lastRun }));

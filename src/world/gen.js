@@ -320,7 +320,7 @@ function waterPockets(G) {
     }
     // and a geode under it, because the rule has to be worth learning
     let placed = false;
-    for (let k = 1; k <= 4 && !placed; k++) {
+    for (let k = 2; k <= 5 && !placed; k++) {
       for (const ox of [0, -2, 2]) {
         const gy = y + rh + k;
         if (!solidHere(G, x + ox, gy)) continue;
@@ -346,7 +346,10 @@ function fossils(G) {
       a += curl;
       x += Math.cos(a) * 2.0; y += Math.sin(a) * 1.6;
       const px = Math.round(x), py = Math.round(y);
-      if (px < 4 || py < 3 || px >= W - 4 || py >= H - 4) { ok = 0; break; }   // abandon, do not orphan the skull
+      // Stop walking, but keep what has already been laid: zeroing ok skipped the SKULL while
+      // leaving its vertebrae and BONEHINT clues in the world, which is the lie inverted.
+      // The clamp on the skull position below is what keeps it on the map.
+      if (px < 4 || py < 3 || px >= W - 4 || py >= H - 4) break;
       const r = 1.2 - v / verts * 0.5;
       blob(G, px, py, r, T.BONE);
       ok++;
@@ -577,9 +580,10 @@ function wakeUnsupportedLiquids(G) {
   for (let y = 1; y < H - 1; y++) {
     for (let x = 1; x < W - 1; x++) {
       if (!TILES[at(G, x, y)].liquid) continue;
-      if (at(G, x, y + 1) === T.AIR || at(G, x - 1, y) === T.AIR || at(G, x + 1, y) === T.AIR) {
-        G.world.pushLiquid(x, y);
-      }
+      // Only what a carve actually left UNSUPPORTED. Waking side-adjacent liquid as well set
+      // 68% of maps churning from load and drained the authored water pockets the BLUE ROOTS
+      // clue points at, long before any player got near them.
+      if (at(G, x, y + 1) === T.AIR) G.world.pushLiquid(x, y);
     }
   }
 }
