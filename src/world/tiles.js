@@ -55,7 +55,7 @@ TILES[T.BEDROCK] = def({
 
 TILES[T.ORE_GOLD] = def({
   name: 'Gold Seam', hp: 5, power: 1, voice: 'metal', fam: 'gold', dust: P.GOLD3,
-  value: 46, item: 'nugget', emit: 0.06, chain: 3,
+  value: 46, item: 'nugget', emit: 0, chain: 3,   // metal does not glow; the flecks are the clue
 });
 TILES[T.ORE_GEM] = def({
   name: 'Gem Pocket', hp: 6, power: 1, voice: 'crystal', fam: 'gem', dust: P.GEM4,
@@ -93,7 +93,7 @@ TILES[T.MAGMA] = def({
 TILES[T.MIMIC] = def({
   // Reads as a gold seam until you notice the flecks are too regular and the hue is a touch green.
   name: 'Gold Seam', hp: 5, power: 1, voice: 'metal', fam: 'mimic', dust: P.GOLD2,
-  value: 0, emit: 0.05,
+  value: 0, emit: 0,   // must be indistinguishable from ORE_GOLD
 });
 TILES[T.GLOWCAP] = def({
   name: 'Glowcap', hp: 1, power: 0, voice: 'root', fam: 'fungus', dust: P.FUNG2,

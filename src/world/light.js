@@ -51,17 +51,31 @@ export class LightField {
     // Ambient daylight bleeds down from the top of the first stratum only.
     const amb = ambient * REF;
 
-    // Seed emissive tiles.
-    const mat = world.mat, ww = world.w;
+    // Seed emissive tiles — but ONLY where they are exposed to open space.
+    //
+    // GDD §20 wants distant crystals to be "isolated points of attraction" seen through a
+    // tunnel mouth. A buried one lighting itself is a different thing entirely: it shows the
+    // player the seam through solid rock, and the moment that happens the whole fleck grammar
+    // has nothing left to do. A formation lining a cavern wall still calls across the chamber;
+    // a geode sealed in stone stays a secret until you break its shell.
+    const mat = world.mat, ww = world.w, wh = world.h;
     for (let ty = y0; ty <= y1; ty++) {
       const row = ty * ww, brow = (ty - y0) * w;
       for (let tx = x0; tx <= x1; tx++) {
-        const e = TILES[mat[row + tx]].emit;
-        if (e > 0) {
-          const v = 2.2 + e * 7.5;
-          const bi = brow + (tx - x0);
-          if (v > buf[bi]) buf[bi] = v;
+        const id = mat[row + tx];
+        const e = TILES[id].emit;
+        if (e <= 0) continue;
+        if (TILES[id].solid) {
+          const exposed =
+            (tx > 0 && mat[row + tx - 1] === T.AIR) ||
+            (tx < ww - 1 && mat[row + tx + 1] === T.AIR) ||
+            (ty > 0 && mat[row - ww + tx] === T.AIR) ||
+            (ty < wh - 1 && mat[row + ww + tx] === T.AIR);
+          if (!exposed) continue;
         }
+        const v = 2.2 + e * 7.5;
+        const bi = brow + (tx - x0);
+        if (v > buf[bi]) buf[bi] = v;
       }
     }
     // Seed explicit sources (lantern, explosions, glowmoth bursts).

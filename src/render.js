@@ -253,6 +253,10 @@ export function drawGlow(g, G) {
       const id = world.mat[row + tx];
       const e = TILES[id].emit;
       if (e < 0.12) continue;
+      // Same rule as the light field: a buried formation does not bloom through the rock.
+      if (TILES[id].solid &&
+          world.get(tx - 1, ty) !== T.AIR && world.get(tx + 1, ty) !== T.AIR &&
+          world.get(tx, ty - 1) !== T.AIR && world.get(tx, ty + 1) !== T.AIR) continue;
       const pulse = 0.82 + Math.sin(G.t * 2.4 + tx * 0.7 + ty * 1.3) * 0.18;
       const r = (7 + e * 26) * pulse;
       const lx = tx * TS + TS / 2 - camX, ly = ty * TS + TS / 2 - camY;

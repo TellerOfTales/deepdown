@@ -74,10 +74,30 @@ function riskColor(frac) {
   return COLORS_RISK[i];
 }
 
+/** A soft corner scrim so a number never has to compete with a lit gem pocket behind it. */
+function scrim(g, x, y, w, h, dx, dy) {
+  const grad = g.createLinearGradient(x, y, x + w * dx, y + h * dy);
+  grad.addColorStop(0, 'rgba(6,6,11,0.55)');
+  grad.addColorStop(1, 'rgba(6,6,11,0)');
+  g.fillStyle = grad;
+  g.fillRect(x, y, w, h);
+}
+
 export function drawHUD(g, G, dt) {
   const p = G.player;
   if (!p) return;
   const s = G.world ? G.world.stratum : STRATA[0];
+  const tch = !!G.touch;
+  g.save();
+  scrim(g, 0, 0, 130, 46, 1, 0);                                   // health + lantern
+  scrim(g, VW - 130, 0, 130, tch ? 70 : 40, -1, 0);                // depth (+ risk on touch)
+  if (!tch) {
+    scrim(g, 0, VH - 30, 120, 30, 1, 0);                           // tool + charges
+    scrim(g, VW - 130, VH - 46, 130, 46, -1, 0);                   // AT RISK
+  } else {
+    scrim(g, 0, VH - 26, 90, 26, 1, 0);
+  }
+  g.restore();
 
   // ── health ────────────────────────────────────────────────────────────────
   let hx = 6;
@@ -109,7 +129,7 @@ export function drawHUD(g, G, dt) {
   // ── tool + charges ────────────────────────────────────────────────────────
   // On a touch device both bottom corners belong to thumbs, so the whole readout moves up
   // under the health and depth blocks instead of fighting the DIG button.
-  const touch = !!G.touch;
+  const touch = tch;
   const toolY = touch ? 31 : VH - 17;
   drawSprite(g, SP.ICON_PICK, 0, 6, toolY, null);
   bar(g, 18, toolY + 4, 34, 5, H.tool, H.tool < 0.2 ? P.UI_DANGER : P.STEEL3);
