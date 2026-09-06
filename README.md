@@ -32,6 +32,7 @@ npm run build        # dist/deeper.html
 | **L** / **C** / **right-click** | use a charge (blast / sonar) |
 | **E** | interact — the shaft, the lift |
 | **F** | dim the lantern (lasts longer, attracts less) |
+| **TAB** | field journal (from the Depot) |
 | **R** | dig again, immediately |
 | **ESC** | pause · **M** mute |
 

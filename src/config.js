@@ -21,11 +21,11 @@ export const CFG = {
   comboMax:       40,
 
   heavyChargeTime: 0.42,   // hold DIG this long for a heavy strike
-  heavyCooldown:   0.42,
+  heavyCooldown:   0.32,
 
   dmgNormal: 1.25,
   critMul:   2.0,
-  heavyMul:  2.0,
+  heavyMul:  2.3,
   chainSpill: 0.55,        // fraction of overkill damage that spills into cracked neighbours
 
   // ── hitstop / camera (the punctuation marks) ─────────────────────────────────

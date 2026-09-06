@@ -115,10 +115,15 @@ export class Player {
   /** Is the player inside a 1-tile-wide vertical shaft they can brace against? */
   inChimney(world) {
     const ty = Math.floor((this.y - this.h * 0.5) / TS);
-    const txl = Math.floor((this.x - this.w / 2 - 2) / TS);
-    const txr = Math.floor((this.x + this.w / 2 + 2) / TS);
+    const txl = Math.floor((this.x - this.w / 2 - 3) / TS);
+    const txr = Math.floor((this.x + this.w / 2 + 3) / TS);
     const l = world.solid(txl, ty), r = world.solid(txr, ty);
-    return this.spikes ? (l || r) : (l && r);
+    if (!(this.spikes ? (l || r) : (l && r))) return false;
+    // There must be somewhere to go, or standing in a dug corridor and aiming up would make
+    // the miner hover instead of stand.
+    const headTY = Math.floor((this.y - this.h - 1) / TS);
+    const footTY = Math.floor((this.y + 1) / TS);
+    return !world.solid(Math.floor(this.x / TS), headTY) || !world.solid(Math.floor(this.x / TS), footTY);
   }
 
   // ── main update ─────────────────────────────────────────────────────────────
@@ -185,7 +190,7 @@ export class Player {
     // ── climbing a chimney ───────────────────────────────────────────────────
     const chim = this.inChimney(world);
     this.climbing = false;
-    if (chim && !this.onGround && (holdUp || holdDown)) {
+    if (chim && (holdUp || holdDown)) {
       this.climbing = true;
       this.vy = (holdUp ? -1 : 1) * CFG.climbSpeed;
       this.vx *= 0.4;
@@ -226,7 +231,7 @@ export class Player {
       if (ctx.onLand) ctx.onLand(clamp(drop / 10, 0.1, 1.4), drop);
       if (this.falling && drop > this.fallSafe) {
         const dmg = Math.max(1, Math.round((drop - this.fallSafe) * CFG.fallDmgPerTile));
-        this.hurt(dmg, 0, -1, ctx, 'the fall');
+        this.hurt(dmg, 0, -1, ctx, 'the fall', true);   // no bounce: you hit the floor, you stay there
       }
       this.falling = false;
     }
@@ -410,15 +415,17 @@ export class Player {
     }
   }
 
-  hurt(dmg, kx, ky, ctx, cause) {
+  hurt(dmg, kx, ky, ctx, cause, noKnock) {
     if (this.invuln > 0 || this.dead) return false;
     this.hp -= dmg;
     this.invuln = CFG.invuln;
     this.hurtT = 0.30;
     this.flash = 1;
     this.combo = 0; this.comboT = 0;
-    this.vx += kx * CFG.knockback;
-    this.vy = Math.min(this.vy, -80) + ky * 40;
+    if (!noKnock) {
+      this.vx += kx * CFG.knockback;
+      this.vy = Math.min(this.vy, -80) + ky * 40;
+    } else this.vy = 0;
     if (ctx && ctx.onHurt) ctx.onHurt(dmg, cause);
     if (this.hp <= 0) { this.hp = 0; this.dead = true; this.deadT = 0; this.anim = ANIM.DEAD; this.animT = 0; }
     return true;

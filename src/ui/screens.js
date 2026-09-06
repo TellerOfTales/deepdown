@@ -185,10 +185,11 @@ export function drawDepot(g, G, dt) {
     text(g, 'THE LIFT IS WAITING.', rx + 6, 71, { color: P.UI_DARK });
   } else {
     text(g, lr.extracted ? 'EXTRACTED' : 'LOST', rx + 6, 60, { color: lr.extracted ? P.UI_GOOD : P.UI_DANGER, scale: 2 });
+    if (lr.deep && lr.extracted) text(g, 'BACK FROM THE EMBERDEEP', rx + 6, 88, { color: P.UI_GOLD });
     text(g, lr.depth + ' M', rx + rw - 6, 62, { color: P.UI_BONE, align: 'right' });
     text(g, (lr.extracted ? 'BANKED ' : 'AT ') + money(lr.value), rx + 6, 78, { color: lr.extracted ? P.UI_GOLD : P.UI_DARK });
     const notes = (lr.learned || []).slice(-3);
-    text(g, 'FIELD NOTES', rx + 6, 92, { color: P.UI_DIM });
+    text(g, 'FIELD NOTES', rx + 6, lr.deep && lr.extracted ? 98 : 92, { color: P.UI_DIM });
     if (!notes.length) text(g, 'NOTHING NEW.', rx + 6, 102, { color: P.UI_DARK });
     for (let i = 0; i < notes.length; i++) {
       const lines = wrap(notes[i], rw - 12, 1).slice(0, 2);
@@ -342,7 +343,8 @@ export function drawPause(g, G, dt) {
     'K  SHIFT          JUMP',
     'L                 USE A CHARGE',
     'E                 THE SHAFT   THE LIFT',
-    'F                 DIM THE LANTERN',
+    'F                 DIM THE LANTERN (LASTS LONGER)',
+    'TAB               FIELD JOURNAL (IN THE DEPOT)',
     'M                 MUTE',
   ];
   let y = 96;

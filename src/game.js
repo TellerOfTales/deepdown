@@ -77,6 +77,7 @@ export function newGame() {
     cfg: CFG,
     tutorialShown: {},
     bagWarned: 0,
+    coachT: 0,
     ruleTable: RULES,
     slowmo: 0,
   };
@@ -142,6 +143,10 @@ export function startRun(G, seed) {
   enterStratum(G, 0);
   G.mode = 'run';
   audio.ambient(0);
+  if (G.stats.runs <= 1) {
+    msg(G, 'SPACE  DIG      A D  MOVE      K  JUMP', '#d8d2c4');
+    G.coachT = 0;
+  }
   if (G.world.hint) msg(G, G.world.hint, '#8a8496');
 }
 
@@ -182,6 +187,7 @@ export function bankRun(G, reason) {
   G.lastRun = {
     depth: G.runMaxDepth, value: amount, items: Object.assign({}, G.haulItems),
     learned: G.runLearned.slice(), time: G.runT, extracted: true, reason,
+    deep: G.runMaxDepth >= STRATA[STRATA.length - 1].top,
   };
   audio.bank(amount);
   G.haul = 0; G.haulItems = {}; G.weight = 0; G.carried.length = 0;
@@ -299,7 +305,7 @@ function veinHint(G, tx, ty) {
     const t = world.get(tx + dx, ty + dy);
     if (t === T.ORE_GOLD || t === T.ORE_GEM || t === T.CRYSTAL || t === T.RELIC) {
       const [cx, cy] = tileCentre(tx, ty);
-      G.veinHints.push({ x: cx + dx * 5, y: cy + dy * 5, dx, dy, t: 0, life: 1.1 });
+      G.veinHints.push({ x: cx + dx * 5, y: cy + dy * 5, dx, dy, t: 0, life: 1.8 });
     }
   }
 }
@@ -678,7 +684,8 @@ function updateCosmetic(G, dt) {
 function updateTitle(G, dt, input) {
   if (input.pressed('confirm') || input.pressed('dig') || input.anyPressed) {
     audio.init(); audio.ui('confirm');
-    G.mode = 'depot'; G.ui.sel = 0;
+    if (G.stats.runs === 0) startRun(G);      // never open a shop before the verb
+    else { G.mode = 'depot'; G.ui.sel = 0; }
   }
 }
 
@@ -716,6 +723,13 @@ function updateRun(G, dt, input) {
   G.runT += dt;
   G.mouseWorld = { x: input.mx + G.cam.ix, y: input.my + G.cam.iy };
 
+  if (G.stats.runs <= 1 && !G.tutorialShown.crit && G.stats.strikes >= 8) {
+    G.coachT = (G.coachT || 0) + dt;
+    if (G.coachT > 1.2 && !G.tutorialShown.beat) {
+      G.tutorialShown.beat = 1;
+      msg(G, 'TAP AGAIN THE MOMENT THE PICK IS READY - LISTEN FOR THE CLICK', '#ffd867');
+    }
+  }
   if (p.tool <= 0 && !G.tutorialShown.blunt) {
     G.tutorialShown.blunt = 1;
     msg(G, 'THE PICK IS BLUNT - THE SHAFT HOUSE HAS A GRINDING WHEEL', '#ff9b2e');

@@ -45,7 +45,7 @@ TILES[T.SLATE] = def({
 });
 TILES[T.GRANITE] = def({
   // Needs a heavy or a crit until you buy the Reinforced Pick. Sparks when you're too weak.
-  name: 'Granite', hp: 8, power: 2, voice: 'granite', fam: 'granite', dust: P.GRAN4,
+  name: 'Granite', hp: 7, power: 2, voice: 'granite', fam: 'granite', dust: P.GRAN4,
   spark: true, opacity: 0.72, mass: 1.4,
 });
 TILES[T.BEDROCK] = def({
