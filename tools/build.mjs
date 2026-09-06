@@ -57,7 +57,8 @@ const KEYS = `<div id="keys">
 <span class="sep">/</span><span><kbd>W</kbd><kbd>S</kbd> <b>Aim &amp; climb</b></span>
 <span class="sep">/</span><span><kbd>K</kbd> <b>Jump</b></span>
 <span class="sep">/</span><span><kbd>E</kbd> <b>The shaft</b></span>
-<span class="sep">/</span><span><kbd>L</kbd> <b>Charge</b></span>
+<span class="sep">/</span><span><kbd>L</kbd> <b>Blast</b></span>
+<span class="sep">/</span><span><kbd>V</kbd> <b>Sonar</b></span>
 <span class="sep">/</span><span><kbd>F</kbd> <b>Dim lantern</b></span>
 <span class="sep">/</span><span><kbd>R</kbd> <b>Dig again</b></span>
 </div>`;

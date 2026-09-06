@@ -25,7 +25,8 @@ const server = createServer(async (req, res) => {
     res.end(buf);
   } catch { res.writeHead(404); res.end('404'); }
 });
-await new Promise(r => server.listen(8125, r));
+await new Promise(r => server.listen(0, r));
+const PORT = server.address().port;
 
 mkdirSync('shots', { recursive: true });
 const browser = await chromium.launch({
@@ -39,7 +40,7 @@ page.on('console', (m) => { const t = m.text(); logs.push(m.type() + ': ' + t); 
 page.on('pageerror', (e) => errors.push('PAGEERROR: ' + (e.stack || e.message)));
 page.on('requestfailed', (r) => errors.push('REQFAIL: ' + r.url() + ' ' + (r.failure() && r.failure().errorText)));
 
-const url = 'http://localhost:8125' + (args.url || '/index.html');
+const url = 'http://localhost:' + PORT + (args.url || '/index.html');
 await page.goto(url, { waitUntil: 'load' });
 await page.waitForTimeout(700);
 

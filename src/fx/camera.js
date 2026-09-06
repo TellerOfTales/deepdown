@@ -16,7 +16,15 @@ export class Camera {
     this.seed = 1337;
   }
 
-  snapTo(px, py, world) { this.tx = px; this.ty = py; this.x = px; this.y = py; this.clampTo(world); this.x = this.tx; this.y = this.ty; }
+  /** Hard cut. Nothing from the previous shot survives it — a death shake must not ring on
+   *  into the first second of the next run. */
+  snapTo(px, py, world) {
+    this.tx = px; this.ty = py;
+    this.shake = 0; this.punchX = 0; this.punchY = 0; this.leadX = 0; this.leadY = 0;
+    this.shakeX = 0; this.shakeY = 0;
+    this.clampTo(world);
+    this.x = this.tx; this.y = this.ty;
+  }
 
   /** Aim at the player, biased slightly toward where they are looking and moving. */
   follow(player, dt, world) {
@@ -29,7 +37,9 @@ export class Camera {
     this.tx = damp(this.tx, targetX, 9.5, dt);
     this.ty = damp(this.ty, targetY, 8.0, dt);
     this.clampTo(world);
-    this.update(dt);
+    // NO update() here. updateCosmetic() integrates the camera once per frame in every mode;
+    // doing it twice halved every shake's authored duration and advanced the noise seed at
+    // 120 Hz, which turned a directional impact into undirected jitter.
   }
 
   clampTo(world) {

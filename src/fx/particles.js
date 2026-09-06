@@ -103,6 +103,9 @@ export class FX {
 
   /** Chunky fragments thrown AGAINST the swing. The bread and butter of every break. */
   debris(x, y, color, n, dirX, dirY, floorY) {
+    // Default to the bottom of the tile the fragment came from. Without a floor the bounce and
+    // settle branch is unreachable and every chip of rock in the game sinks through the ground.
+    if (floorY === undefined || floorY === null) floorY = Math.floor(y / 16) * 16 + 15;
     const a = Math.atan2(-(dirY || 0), -(dirX || 0)) || -Math.PI / 2;
     this.burst(x, y, {
       color, n, angle: (dirX || dirY) ? a : -Math.PI / 2, spread: (dirX || dirY) ? 2.0 : Math.PI * 2,
@@ -296,7 +299,9 @@ export class FX {
       const x = Math.round(p.x - camX), y = Math.round(p.y - camY);
 
       if (p.shape === SHAPE.TEXT) {
-        const sc = p.scale * (1 + p.pop * 0.55);
+        // 0.7, not 0.55: fx.update() runs in the same frame the popup is emitted, so by the
+        // first draw pop is already ~0.85 and Math.round() flattened a scale-1 popup back to 1.
+        const sc = p.scale * (1 + p.pop * 0.7);
         text(g, p.text, x, y, {
           color: p.color, scale: Math.max(1, Math.round(sc)), align: 'center',
           shadow: p.size > 0, alpha: a,
@@ -343,7 +348,7 @@ export class FX {
 }
 
 /** Bresenham-ish midpoint circle, drawn as pixels because it has to look drawn. */
-function pixelRing(g, cx, cy, r, thick) {
+export function pixelRing(g, cx, cy, r, thick) {
   if (r <= 0) return;
   let x = r, y = 0, err = 1 - r;
   const t = Math.max(1, thick | 0);

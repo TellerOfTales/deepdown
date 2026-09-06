@@ -48,7 +48,8 @@ export class World {
     const i = ty * this.w + tx;
     this.mat[i] = id;
     this.dmg[i] = 0;
-    if (TILES[id].emit > 0 || TILES[id].emit === 0) this.emitterDirty = true;
+    this.deco[i] = 0;      // a clue belongs to the tile that carried it, not to the cell
+    this.emitterDirty = true;
   }
   setDeco(tx, ty, d) { if (this.inb(tx, ty)) this.deco[ty * this.w + tx] = d; }
   getDeco(tx, ty) { return this.inb(tx, ty) ? this.deco[ty * this.w + tx] : 0; }
@@ -111,9 +112,9 @@ export class World {
     if (depth > 24 || out.length > 90) return out;
 
     // --- SHEAR: slate lets go along the bed it was laid down in. A crit rips a corridor open. ---
-    if (info.shear > 0 && (cause === 'direct' || cause === 'shear')) {
+    if (info.shear > 0 && cause === 'direct') {
       const reach = Math.min(info.shear, 1 + Math.floor(overkill * 1.6) + (crit ? 2 : 0));
-      if (cause === 'direct') {
+      {
         for (const dir of [-1, 1]) {
           for (let k = 1; k <= reach; k++) {
             const nx = tx + dir * k;
@@ -186,11 +187,17 @@ export class World {
       f.y += f.vy * dt;
       const ty = Math.floor((f.y + TS - 1) / TS);
       if (this.get(f.tx, ty) !== T.AIR || ty >= this.h) {
-        const rest = ty - 1;
-        if (this.get(f.tx, rest) === T.AIR) this.set(f.tx, rest, f.tile);
-        events.push({ type: 'land', tx: f.tx, ty: rest, tile: f.tile, vy: f.vy });
+        // Stack it on whatever is already there rather than deleting it. Two tiles can land in
+        // the same column in one frame, and a rock that vanishes while still making its impact
+        // sound is worse than no rock at all.
+        let rest = ty - 1;
+        while (rest > 0 && this.get(f.tx, rest) !== T.AIR) rest--;
         this.falling.splice(i, 1);
-        this.queueSettle(f.tx, rest);
+        if (rest > 0 && this.get(f.tx, rest) === T.AIR) {
+          this.set(f.tx, rest, f.tile);
+          events.push({ type: 'land', tx: f.tx, ty: rest, tile: f.tile, vy: f.vy });
+          this.queueSettle(f.tx, rest);
+        }
       }
     }
 
@@ -226,14 +233,17 @@ export class World {
         const t = this.mat[k];
         if (!TILES[t].liquid) continue;
         if (this.get(tx, ty + 1) === T.AIR) {
-          this.mat[k] = T.AIR; this.set(tx, ty + 1, t);
+          this.set(tx, ty, T.AIR); this.set(tx, ty + 1, t);
           this.pushLiquid(tx, ty + 1); this.queueSettle(tx, ty);
           events.push({ type: 'flow', tx, ty: ty + 1, tile: t });
         } else {
           const order = hashf(tx, ty, 7) < 0.5 ? [-1, 1] : [1, -1];
           for (const d of order) {
-            if (this.get(tx + d, ty) === T.AIR && this.get(tx + d, ty + 1) !== T.AIR) {
-              this.mat[k] = T.AIR; this.set(tx + d, ty, t);
+            // No support test: an unsupported neighbour is exactly the cell water should take
+            // first, and next tick's fall branch carries it down. Requiring a floor meant a
+            // pool sitting at the lip of a shaft never drained into it.
+            if (this.get(tx + d, ty) === T.AIR) {
+              this.set(tx, ty, T.AIR); this.set(tx + d, ty, t);
               this.pushLiquid(tx + d, ty); this.queueSettle(tx, ty);
               events.push({ type: 'flow', tx: tx + d, ty, tile: t });
               break;

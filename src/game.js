@@ -168,6 +168,7 @@ export function enterStratum(G, idx) {
   G.enemies.length = 0;
   G.bombs.length = 0;
   G.veinHints.length = 0;
+  G.sonar.t = 0;
   G.loot.clear();
   G.fx.clear();
   for (const sp of world.spawns) {
@@ -179,7 +180,7 @@ export function enterStratum(G, idx) {
   p.y = (world.entryTY + 1) * TS;
   p.vx = 0; p.vy = 0; p.dead = false;
   p.readyAt = G.t; p.combo = 0;
-  G.cam.snapTo(p.x - VW / 2, p.y - VH / 2, world);
+  G.cam.snapTo(p.x - VW / 2, p.y - p.h * 0.5 - VH / 2, world);
   G.shaft.open = false;
   audio.ambient(idx);
 }
@@ -196,6 +197,7 @@ export function bankRun(G, reason) {
     learned: G.runLearned.slice(), time: G.runT, extracted: true, reason,
     deep: G.runMaxDepth >= STRATA[STRATA.length - 1].top,
   };
+  G.stats.bestCombo = Math.max(G.stats.bestCombo | 0, G.player.bestCombo | 0);
   audio.bank(amount);
   G.haul = 0; G.haulItems = {}; G.weight = 0; G.carried.length = 0;
   G.mode = 'depot';
@@ -219,6 +221,7 @@ export function die(G, cause) {
     depth: G.runMaxDepth, value: Math.round(G.haul), items: Object.assign({}, G.haulItems),
     learned: G.runLearned.slice(), time: G.runT, extracted: false, reason: cause,
   };
+  G.stats.bestCombo = Math.max(G.stats.bestCombo | 0, G.player.bestCombo | 0);
   audio.die();
   SaveMod.save(G);
 }
@@ -233,21 +236,28 @@ export function isGone(e) {
 }
 
 /**
- * Flood the opened space to decide whether we made a hole or a room.
+ * How big is the space BEHIND this face?
+ *
+ * This has to be measured before the pick opens it and from the far side, or it measures the
+ * player's own tunnel instead: flooded after the break it either runs back to the entry alcove
+ * (and returns 0, killing the discovery entirely) or hits the cap once the excavation joins any
+ * natural cavern (and then fires HIDDEN CHAMBER on literally every subsequent tile).
+ *
  * Returns 0 if the space reaches daylight or the map edge — breaking through to the sky is not
  * a discovery, and rewarding it would teach exactly the wrong lesson.
  */
 function cavitySize(world, tx, ty, cap) {
+  if (world.get(tx, ty) !== T.AIR) return 0;
   const seen = new Set();
   const stack = [tx, ty];
   let n = 0;
   while (stack.length && n < cap) {
     const y = stack.pop(), x = stack.pop();
     if (x < 1 || y < 0 || x >= world.w - 1 || y >= world.h - 1) continue;
-    if (y <= 3) return 0;
     const k = y * world.w + x;
     if (seen.has(k)) continue;
     if (world.get(x, y) !== T.AIR) continue;
+    if (y <= 4) return 0;                       // daylight, not a discovery
     seen.add(k); n++;
     stack.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1);
   }
@@ -287,15 +297,27 @@ function tryTake(G, kind, value, x, y) {
   const w = WEIGHT[kind] || 0;
   if (G.weight + w <= p.carryMax) { addHaul(G, kind, value); return true; }
   const incoming = w <= 0 ? Infinity : value / w;
-  let best = Infinity;
-  for (const c of G.carried) { const r = c.w <= 0 ? Infinity : c.value / c.w; if (r < best) best = r; }
-  if (incoming <= best) return false;
-  const dropped = [];
-  let guard = 0;
-  while (G.weight + w > p.carryMax && G.carried.length && guard++ < 24) {
-    const d = dropWorst(G);
-    if (!d) break;
-    dropped.push(d);
+
+  // Work out the whole trade before committing to any of it. Testing only the single worst item
+  // and then evicting as many as it takes can throw away a gem to make space for a nugget.
+  const order = G.carried.map((c, i) => ({ i, c, r: c.w <= 0 ? Infinity : c.value / c.w }))
+                         .sort((a, b) => a.r - b.r);
+  let freed = 0, lost = 0, take = 0;
+  const need = G.weight + w - p.carryMax;
+  while (freed < need && take < order.length) {
+    if (order[take].r >= incoming) break;      // never evict something denser than what arrived
+    freed += order[take].c.w;
+    lost += order[take].c.value;
+    take++;
+  }
+  if (freed < need || lost >= value) return false;   // the trade is not worth making
+
+  const drop = new Set(order.slice(0, take).map(o => o.i));
+  const dropped = G.carried.filter((_, i) => drop.has(i));
+  G.carried = G.carried.filter((_, i) => !drop.has(i));
+  for (const d of dropped) {
+    G.haul -= d.value; G.weight -= d.w;
+    G.haulItems[d.kind] = Math.max(0, (G.haulItems[d.kind] | 0) - 1);
   }
   addHaul(G, kind, value);
   for (const d of dropped) G.loot.spawn(x, y, d.kind, d.value, G.rand, 0, 0).reject = 2.2;
@@ -368,6 +390,7 @@ export function resolveStrike(G, info) {
   // Read the clue off the face BEFORE the pick removes it.
   const seedDeco = world.getDeco(info.tx, info.ty);
   const seedDeco2 = info.second >= 0 ? world.getDeco(info.tx, info.second) : 0;
+  const seedCavity = hollow ? cavitySize(world, bx, by, 240) : 0;
 
   const res = world.strike(info.tx, info.ty, info.power, info.damage, { crit: info.crit });
 
@@ -377,7 +400,7 @@ export function resolveStrike(G, info) {
   if (info.second >= 0 && info.dy === 0) {
     const r2 = world.strike(info.tx, info.second, info.power, info.damage * CFG.sideSpill, { crit: info.crit });
     if (r2.broke && r2.broken && r2.broken.length) {
-      handleBreaks(G, r2.broken, { tx: info.tx, ty: info.second, dx: info.dx, dy: 0, crit: info.crit, combo: info.combo }, false, seedDeco2);
+      handleBreaks(G, r2.broken, { tx: info.tx, ty: info.second, dx: info.dx, dy: 0, crit: info.crit, combo: info.combo }, false, seedDeco2, 0);
     }
   }
 
@@ -429,13 +452,14 @@ export function resolveStrike(G, info) {
   if (!res.broke) return;
 
   // --- the POP ---
-  handleBreaks(G, res.broken, info, hollow, seedDeco);
+  handleBreaks(G, res.broken, info, hollow, seedDeco, seedCavity);
 }
 
-function handleBreaks(G, broken, info, hollow, seedDeco) {
+function handleBreaks(G, broken, info, hollow, seedDeco, seedCavity) {
   const world = G.world, p = G.player, fx = G.fx;
   let valueGained = 0, best = null, shear = 0, chain = 0;
   seedDeco = seedDeco || 0;
+  seedCavity = seedCavity || 0;
 
   for (const b of broken) {
     const bi = TILES[b.tile];
@@ -456,7 +480,9 @@ function handleBreaks(G, broken, info, hollow, seedDeco) {
     }
 
     if (b.tile === T.RELIC) foundRelic(G, bx, by);
-    if (b.tile === T.MIMIC) { learn(G, 'mimic'); msg(G, 'IT WAS NEVER GOLD', '#ff5a4a'); }
+    if (b.tile === T.MIMIC && !G.tutorialShown.mimicMsg) {
+      G.tutorialShown.mimicMsg = 1; learn(G, 'mimic'); msg(G, 'IT WAS NEVER GOLD', '#ff5a4a');
+    }
     veinHint(G, b.tx, b.ty);
     world.queueSettle(b.tx, b.ty);
   }
@@ -509,20 +535,27 @@ function handleBreaks(G, broken, info, hollow, seedDeco) {
   }
 
   // --- did we open something? ---
-  if (hollow || world.get(info.tx, info.ty) === T.AIR) {
-    const size = cavitySize(world, info.tx, info.ty, 220);
-    if (size >= 26) {
-      const predicted = seedDeco === D.HAIRLINE || seedDeco === D.AIRFLOW;
-      fxDiscovery(fx, info.tx * TS + TS / 2, info.ty * TS + TS / 2, predicted ? '#ffd867' : '#7fd0f0');
+  if (seedCavity > 0) {
+    const cx2 = info.tx * TS + TS / 2, cy2 = info.ty * TS + TS / 2;
+    const predicted = seedDeco === D.HAIRLINE || seedDeco === D.AIRFLOW;
+    if (seedCavity >= 26) {
+      fxDiscovery(fx, cx2, cy2, predicted ? '#ffd867' : '#7fd0f0');
       G.hitstop = Math.max(G.hitstop, CFG.hitstopDiscovery);
       G.cam.addShake(4.2);
       G.flash.color = '#d5fff6'; G.flash.a = predicted ? 0.42 : 0.24;
       audio.duck(1.4, 0.35);
-      if (predicted) { learn(G, 'hollow'); callout(G, 'YOU CALLED IT', 'A CHAMBER, EXACTLY WHERE THE CRACK SAID', '#ffd867', 3); }
-      else callout(G, 'HIDDEN CHAMBER', size >= 200 ? 'IT KEEPS GOING' : size + ' CUBIC METRES OF NOTHING', '#7fd0f0', 2);
-    } else if (size >= 6 && hollow) {
-      fxHollowPuff(fx, info.tx * TS + TS / 2, info.ty * TS + TS / 2, info.dx, info.dy);
-      if (seedDeco === D.HAIRLINE) learn(G, 'hollow');
+      if (predicted) {
+        // Say the rule ONCE, inside the reward, rather than posting a field note that the
+        // very next line overwrites.
+        const fresh = !G.discoveries.has('hollow');
+        if (fresh) { G.discoveries.add('hollow'); G.runLearned.push(RULES.hollow.rule); }
+        callout(G, 'YOU CALLED IT', fresh ? RULES.hollow.rule : 'A CHAMBER, EXACTLY WHERE THE CRACK SAID', '#ffd867', 3);
+      } else {
+        callout(G, 'HIDDEN CHAMBER', seedCavity >= 240 ? 'IT KEEPS GOING' : seedCavity + ' CUBIC METRES OF NOTHING', '#7fd0f0', 2);
+      }
+    } else if (seedCavity >= 5) {
+      fxHollowPuff(fx, cx2, cy2, info.dx, info.dy);
+      if (predicted) learn(G, 'hollow');
     }
   }
 
@@ -534,13 +567,15 @@ function handleBreaks(G, broken, info, hollow, seedDeco) {
       if (!G.tutorialShown.water) { G.tutorialShown.water = 1; msg(G, 'WATER - IT WILL FIND THE LOW GROUND', '#63cbe8'); }
       audio.danger('water');
     } else if (t === T.MAGMA) {
-      learn(G, 'magma');
+      // Credit the rule only if they read the stain. Handing someone the note for blundering
+      // a pick into magma teaches them that the game will tell them things anyway.
+      if (seedDeco === D.HEAT) learn(G, 'magma');
       audio.danger('magma');
       msg(G, 'HEAT', '#ff9b2e');
     } else if (t === T.RUIN) {
-      learn(G, 'ruin');
+      if (seedDeco === D.EDGE) learn(G, 'ruin');
     } else if (t === T.BONE) {
-      learn(G, 'fossil');
+      if (seedDeco === D.BONEHINT) learn(G, 'fossil');
     }
   }
 }
@@ -561,22 +596,33 @@ function foundRelic(G, x, y) {
 }
 
 // ── utilities (bombs / sonar) ─────────────────────────────────────────────────
+/** Blast charge. Bound to its own key so owning one never locks the other out. */
+export function useBomb(G) {
+  const p = G.player;
+  if (p.charges.bomb <= 0) { audio.ui('deny'); return; }
+  p.charges.bomb--;
+  const a = p.aim;
+  G.bombs.push({ x: a.tx * TS + TS / 2, y: a.ty * TS + TS / 2, t: 0, fuse: 0.85 });
+  audio.ui('confirm');
+  msg(G, 'CHARGE SET', '#ff9b2e');
+}
+
+/** Sonar pulse. */
+export function useSonar(G) {
+  const p = G.player;
+  if (p.charges.sonar <= 0) { audio.ui('deny'); return; }
+  p.charges.sonar--;
+  G.sonar.t = 3.2; G.sonar.x = p.x; G.sonar.y = p.cy; G.sonar.r = 0;
+  audio.discovery(1);
+  msg(G, 'SONAR', '#7fd0f0');
+}
+
+/** The single touch button: whichever charge the player actually has. */
 export function useUtility(G) {
   const p = G.player;
-  if (p.charges.bomb > 0) {
-    p.charges.bomb--;
-    const a = p.aim;
-    G.bombs.push({ x: a.tx * TS + TS / 2, y: a.ty * TS + TS / 2, t: 0, fuse: 0.85 });
-    audio.ui('confirm');
-    msg(G, 'CHARGE SET', '#ff9b2e');
-  } else if (p.charges.sonar > 0) {
-    p.charges.sonar--;
-    G.sonar.t = 3.2; G.sonar.x = p.x; G.sonar.y = p.cy; G.sonar.r = 0;
-    audio.discovery(1);
-    msg(G, 'SONAR', '#7fd0f0');
-  } else {
-    audio.ui('deny');
-  }
+  if (p.charges.bomb > 0) useBomb(G);
+  else if (p.charges.sonar > 0) useSonar(G);
+  else audio.ui('deny');
 }
 
 function updateBombs(G, dt) {
@@ -597,7 +643,7 @@ function updateBombs(G, dt) {
       if (!TILES[G.world.get(tx, ty)].diggable) continue;
       G.world.breakAt(tx, ty, 'collapse', 2, false, broken, 0);
     }
-    handleBreaks(G, broken, { tx: ctx.tx, ty: ctx.ty, dx: 0, dy: 0, crit: false, combo: 0 }, true, 0);
+    handleBreaks(G, broken, { tx: ctx.tx, ty: ctx.ty, dx: 0, dy: 0, crit: false, combo: 0 }, false, 0, 0);
     fxCollapse(G.fx, b.x, b.y, 30);
     G.cam.addShake(CFG.shakeCollapse);
     G.hitstop = Math.max(G.hitstop, 0.09);
@@ -684,6 +730,13 @@ function updateCosmetic(G, dt) {
   }
   if (G.callout) { G.callout.t += dt; if (G.callout.t > G.callout.life) G.callout = null; }
   if (G.sonar.t > 0) { G.sonar.t -= dt; G.sonar.r += dt * 260; }
+  // Vein chevrons are simulation state, not a draw-time effect: aged here they stop ticking
+  // during a pause and slow correctly through hitstop, like everything else.
+  for (let i = G.veinHints.length - 1; i >= 0; i--) {
+    const h = G.veinHints[i];
+    h.t += dt;
+    if (h.t > h.life) G.veinHints.splice(i, 1);
+  }
   G.fx.update(dt);
   G.cam.update(dt);
 }
@@ -774,7 +827,9 @@ function updateRun(G, dt, input) {
   // shaft prompt owns the input while it is open
   if (G.mode === 'shaft') { updateShaft(G, dt, input); return; }
 
-  if (input.pressed('util')) useUtility(G);
+  if (input.pressed('util')) useBomb(G);
+  if (input.pressed('sonar')) useSonar(G);
+  if (input.touch && input.touch._putil) useUtility(G);
 
   const pctx = playerCtx(G);
   if (!p.dead) p.update(dt, input, world, pctx);
@@ -796,6 +851,10 @@ function updateRun(G, dt, input) {
         G.player.hurt(1, 0, -1, pctx, 'falling rock');
       }
       for (const e of G.enemies) if (Math.abs(e.x - x) < 14 && Math.abs(e.y - y) < 18) Enemies.hurt(e, 3, 0, 1, enemyCtx(G));
+    } else if (ev.type === 'fall') {
+      // The moment the ceiling lets go, not just the moment it lands.
+      G.fx.dust(x, y + 6, TILES[ev.tile].dust, 3);
+      audio.strike(TILES[ev.tile].voice, { stage: 3 });
     } else if (ev.type === 'flow') {
       if (TILES[ev.tile].liquid && G.rand.f() < 0.35) {
         if (ev.tile === T.MAGMA) G.fx.ember(x, y); else G.fx.drip(x, y - 6);
@@ -848,6 +907,19 @@ function updateRun(G, dt, input) {
   G.depth = world.stratum.top + pty;
   G.runMaxDepth = Math.max(G.runMaxDepth, G.depth);
   G.maxDepth = Math.max(G.maxDepth, G.depth);
+
+  // A sonar ping permanently reveals what it swept. Doing this here rather than in the draw
+  // pass makes it depend on time rather than on how many frames happened to be rendered.
+  if (G.sonar.t > 0 && !G.sonarMapped) {
+    G.sonarMapped = true;
+    const tx0 = Math.floor(G.sonar.x / TS), ty0 = Math.floor(G.sonar.y / TS);
+    for (let dy = -15; dy <= 15; dy++) for (let dx = -15; dx <= 15; dx++) {
+      if (dx * dx + dy * dy > 225) continue;
+      const sx = tx0 + dx, sy = ty0 + dy;
+      if (sx >= 0 && sy >= 0 && sx < world.w && sy < world.h) world.seen[sy * world.w + sx] = 255;
+    }
+  }
+  if (G.sonar.t <= 0) G.sonarMapped = false;
 
   const lanternReach = (p.lanternR) * (0.35 + 0.65 * (p.light / p.lightMax)) * (p.dim ? 0.55 : 1);
   const sources = [ptx, Math.floor((p.y - p.h * 0.8) / TS), Math.max(2.4, lanternReach)];

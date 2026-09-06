@@ -60,6 +60,7 @@ export function generate(world, rand, meta) {
   creatures(G);
   scatter(G);
   clearSpawnAroundEntry(G);
+  wakeUnsupportedLiquids(G);
 
   world.hint = HINTS[idx] || HINTS[0];
   return world;
@@ -196,7 +197,10 @@ function growVein(G, x, y, depth) {
   const { rand } = G;
   // Veins travel along READABLE structures: a persistent direction, mostly diagonal or axial,
   // so "the flecks are heading down-right" is a sentence a player can act on.
-  const dirs = [[1, 1], [1, -1], [-1, 1], [-1, -1], [1, 0], [0, 1], [-1, 0], [0, -1]];
+  // MUST stay in angular order: the turn below steps one entry, and one entry has to be 45
+  // degrees. Out of order it produced 0 turns of 45 degrees, 490 straight reversals per 300
+  // maps, and a fleck halo pointing back the way the seam came.
+  const dirs = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
   let d = rand.pick(dirs);
   const len = 10 + rand.i(0, 12) - depth * 5;
   const tiles = [];
@@ -207,7 +211,8 @@ function growVein(G, x, y, depth) {
   for (let s = 0; s < len; s++) {
     if (rand.f() < 0.18) {
       // a turn, but only ever 45 degrees — veins that jitter are unreadable
-      const i = dirs.indexOf(dirs.find(v => v[0] === d[0] && v[1] === d[1]));
+      let i = 0;
+      for (let k = 0; k < dirs.length; k++) if (dirs[k][0] === d[0] && dirs[k][1] === d[1]) { i = k; break; }
       d = dirs[(i + (rand.bool() ? 1 : dirs.length - 1)) % dirs.length];
     }
     x += d[0]; y += d[1];
@@ -254,9 +259,10 @@ function haloVein(G, tiles) {
 function gemPockets(G) {
   const { W, H, rand, idx } = G;
   const n = idx === 0 ? 1 : 2;
-  for (let i = 0; i < n; i++) {
+  for (let i = 0, tries = 0; i < n && tries < 80; tries++) {
     const x = rand.i(8, W - 9), y = rand.i(Math.floor(H * (0.3 + idx * 0.05)), H - 7);
     if (!solidHere(G, x, y)) continue;
+    i++;
     blob(G, x, y, 2.6, T.CRYSTAL);
     blob(G, x, y, 1.4, T.ORE_GEM);
     for (let oy = -4; oy <= 4; oy++) for (let ox = -4; ox <= 4; ox++) {
@@ -313,10 +319,15 @@ function waterPockets(G) {
       rx += rand.i(-1, 1);
     }
     // and a geode under it, because the rule has to be worth learning
-    const gy = y + rh + 1 + rand.i(0, 1);
-    if (solidHere(G, x, gy)) {
-      blob(G, x, gy, 1.9, T.CRYSTAL);
-      if (rand.f() < 0.6) blob(G, x, gy, 0.9, T.ORE_GEM);
+    let placed = false;
+    for (let k = 1; k <= 4 && !placed; k++) {
+      for (const ox of [0, -2, 2]) {
+        const gy = y + rh + k;
+        if (!solidHere(G, x + ox, gy)) continue;
+        blob(G, x + ox, gy, 1.9, T.CRYSTAL);
+        if (rand.f() < 0.6) blob(G, x + ox, gy, 0.9, T.ORE_GEM);
+        placed = true; break;
+      }
     }
   }
 }
@@ -335,7 +346,7 @@ function fossils(G) {
       a += curl;
       x += Math.cos(a) * 2.0; y += Math.sin(a) * 1.6;
       const px = Math.round(x), py = Math.round(y);
-      if (px < 4 || py < 3 || px >= W - 4 || py >= H - 4) break;
+      if (px < 4 || py < 3 || px >= W - 4 || py >= H - 4) { ok = 0; break; }   // abandon, do not orphan the skull
       const r = 1.2 - v / verts * 0.5;
       blob(G, px, py, r, T.BONE);
       ok++;
@@ -345,7 +356,7 @@ function fossils(G) {
     if (ok < 3) continue;
     // the skull, at the end of the curve, exactly where the anatomy said it would be
     a += curl; x += Math.cos(a) * 2.4; y += Math.sin(a) * 2.0;
-    const sx = Math.round(x), sy = Math.round(y);
+    const sx = clamp(Math.round(x), 4, W - 5), sy = clamp(Math.round(y), 4, H - 5);
     blob(G, sx, sy, 2.1, T.BONE);
     put(G, sx, sy, T.RELIC);
   }
@@ -425,13 +436,17 @@ function mimicVeins(G) {
 
 // ── 10. hollow clues, applied last so they sit on the real shells ────────────
 function hollowClues(G) {
-  const { W, H, rand } = G;
-  for (let y = 2; y < H - 2; y++) {
+  const { W, H, rand, idx } = G;
+  // Skip the open-sky crust in the topsoil: cavern tells that only lead to the daylight the
+  // player is standing in are the first thing a new player would ever misread.
+  const y0 = idx === 0 ? 6 : 2;
+  for (let y = y0; y < H - 2; y++) {
     for (let x = 2; x < W - 2; x++) {
       if (!solidHere(G, x, y)) continue;
+      // A strike only ever opens an ORTHOGONAL face, so a diagonal neighbour is not "behind
+      // this face" and counting it made about a quarter of every hairline in the mine a lie.
       let adjAir = 0, nearAir = 0;
-      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
-        if (!ox && !oy) continue;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         if (at(G, x + ox, y + oy) === T.AIR) adjAir++;
       }
       if (adjAir === 0) {
@@ -551,6 +566,24 @@ function creatures(G) {
  * player who has not yet learned what a crawler is teaches nothing except that the game is
  * unfair, and GDD Pillar 4 says failure must read as "I should not have done that".
  */
+/**
+ * Water and magma get stamped over whatever is there, including air that a cavern carved
+ * earlier. Nothing simulates a liquid until something queues it, so those tiles would hang
+ * unsupported forever — which reads as a rendering bug and makes the one hazard whose whole
+ * identity is "it finds the low ground" look like scenery.
+ */
+function wakeUnsupportedLiquids(G) {
+  const { W, H } = G;
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      if (!TILES[at(G, x, y)].liquid) continue;
+      if (at(G, x, y + 1) === T.AIR || at(G, x - 1, y) === T.AIR || at(G, x + 1, y) === T.AIR) {
+        G.world.pushLiquid(x, y);
+      }
+    }
+  }
+}
+
 function clearSpawnAroundEntry(G) {
   const ex = G.world.entryTX, ey = G.world.entryTY;
   G.world.spawns = G.world.spawns.filter(s => Math.hypot(s.tx - ex, s.ty - ey) > 14);

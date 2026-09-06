@@ -10,6 +10,7 @@ import {
   drawAimCursor, drawVeinArrows, drawLighting, drawGlow, drawVignette, drawFlash,
 } from './render.js';
 import { P } from './art/pal.js';
+import { pixelRing } from './fx/particles.js';
 import { text } from './art/font.js';
 import { clamp } from './core/rng.js';
 
@@ -22,7 +23,11 @@ let scale = 1, offX = 0, offY = 0;
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
   scale = Math.max(1, Math.min(Math.floor(w / VW), Math.floor(h / VH)));
-  if (VW * scale < w * 0.72 || VH * scale < h * 0.72) scale = Math.min(w / VW, h / VH);
+  // Fall back to a fractional scale when integer scaling either overflows the window (which
+  // would clip the canvas — and the DIG button lives 11px from its right edge) or wastes it.
+  if (VW * scale > w || VH * scale > h || VW * scale < w * 0.72 || VH * scale < h * 0.72) {
+    scale = Math.min(w / VW, h / VH);
+  }
   const cw = Math.round(VW * scale), ch = Math.round(VH * scale);
   canvas.style.width = cw + 'px';
   canvas.style.height = ch + 'px';
@@ -108,12 +113,11 @@ function drawSonar() {
   if (G.sonar.t <= 0) return;
   const camX = G.cam.ix, camY = G.cam.iy;
   const world = G.world;
-  const r = G.sonar.r;
+  const r = Math.round(G.sonar.r);
   g.save();
   g.globalCompositeOperation = 'lighter';
-  g.strokeStyle = 'rgba(127,208,240,0.5)';
-  g.lineWidth = 1;
-  g.beginPath(); g.arc(G.sonar.x - camX, G.sonar.y - camY, r, 0, Math.PI * 2); g.stroke();
+  g.fillStyle = 'rgba(127,208,240,0.5)';
+  pixelRing(g, Math.round(G.sonar.x - camX), Math.round(G.sonar.y - camY), r, 1);
   const R = 15;
   const tx0 = Math.floor(G.sonar.x / TS), ty0 = Math.floor(G.sonar.y / TS);
   for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
@@ -123,8 +127,7 @@ function drawSonar() {
     if (id !== 7 && id !== 8 && id !== 9 && id !== 12) continue;
     const a = clamp(G.sonar.t / 3.2, 0, 1) * 0.8;
     g.fillStyle = `rgba(255,216,103,${a})`;
-    g.fillRect((tx0 + dx) * TS + 6 - camX, (ty0 + dy) * TS + 6 - camY, 4, 4);
-    world.seen[(ty0 + dy) * world.w + (tx0 + dx)] = 255;
+    g.fillRect(Math.round((tx0 + dx) * TS + 6 - camX), Math.round((ty0 + dy) * TS + 6 - camY), 4, 4);
   }
   g.restore();
 }

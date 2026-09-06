@@ -299,7 +299,9 @@ export class Player {
                               (CFG.perfectGrace + CFG.perfectWindow), 0, 1);
     // The metronome: a click the moment the window opens. Players learn the beat by ear
     // long before they learn it by eye.
-    if (this.perfectOpen && !wasOpen && ctx.audio && this.combo > 0) ctx.audio.comboTick(this.combo);
+    // Never gated on already having a combo: the whole point is that a player who has never
+    // landed a crit can hear when the window opens. comboTick scales its own volume.
+    if (this.perfectOpen && !wasOpen && ctx.audio) ctx.audio.comboTick(this.combo);
 
     this.updateAim(world);
 

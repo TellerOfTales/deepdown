@@ -10,6 +10,7 @@ const MAP = {
   dig:     ['Space', 'KeyJ', 'KeyZ'],
   jump:    ['KeyK', 'KeyX', 'ShiftLeft', 'ShiftRight'],
   util:    ['KeyL', 'KeyC', 'ControlLeft'],
+  sonar:   ['KeyV'],
   interact:['KeyE', 'Enter', 'NumpadEnter'],
   confirm: ['Enter', 'NumpadEnter', 'KeyE'],
   cancel:  ['Escape', 'Backspace'],

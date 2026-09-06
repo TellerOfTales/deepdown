@@ -157,7 +157,7 @@ function elevatorFrames(lampPhase) {
   return g.map(r => r.join(''));
 }
 
-export const ELEVATOR = S(15, 39, 3,
+export const ELEVATOR = S(15, 40, 3,
   { w: P.LEATH1, W: P.LEATH2, i: P.STEEL1, I: P.STEEL3, S: P.STEEL4, L: P.LANTERN, l: P.GOLD3 },
   [elevatorFrames(0).join('/'), elevatorFrames(1).join('/')]);
 
@@ -188,7 +188,7 @@ function shaftFrames(glow) {
   return g.map(r => r.join(''));
 }
 
-export const SHAFT_RIG = S(15, 39, 4,
+export const SHAFT_RIG = S(15, 40, 4,
   { i: P.STEEL1, I: P.STEEL3, S: P.STEEL4, k: P.VOID, K: P.INK, b: P.CYAN1, c: P.CYAN2, d: P.CYAN3 },
   [shaftFrames(0).join('/'), shaftFrames(1).join('/'), shaftFrames(2).join('/')]);
 

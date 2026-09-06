@@ -26,15 +26,19 @@ const ANIM_SPRITE = {
   HURT: 'MINER_HURT', DEAD: 'MINER_DEAD',
 };
 
+// Allocated ONCE at the largest window the camera can ever ask for. The light window's tile
+// height alternates between 16 and 17 as the camera moves (VH is not a multiple of TS), so
+// sizing the canvas to the window meant a createElement + createImageData inside the render
+// path dozens of times a second — GC pressure during exactly the frames a rhythm game must
+// not stutter on.
+const LMAXW = Math.ceil(VW / TS) + 20, LMAXH = Math.ceil(VH / TS) + 20;
 let lightCanvas = null, lightCtx = null, lightImg = null;
-let bgCanvas = null;
 
-function ensureLight(lw, lh) {
-  if (!lightCanvas || lightCanvas.width !== lw || lightCanvas.height !== lh) {
-    lightCanvas = makeCanvas(lw, lh);
-    lightCtx = lightCanvas.getContext('2d');
-    lightImg = lightCtx.createImageData(lw, lh);
-  }
+function ensureLight() {
+  if (lightCanvas) return;
+  lightCanvas = makeCanvas(LMAXW, LMAXH);
+  lightCtx = lightCanvas.getContext('2d');
+  lightImg = lightCtx.createImageData(LMAXW, LMAXH);
 }
 
 /** A cheap, dark parallax backdrop so a mined-out chamber still has depth behind it. */
@@ -165,11 +169,10 @@ export function drawAimCursor(g, G) {
 /** The "AGAIN" signpost: when a vein continues past the tile you just opened, point at it. */
 export function drawVeinArrows(g, G) {
   const camX = G.cam.ix, camY = G.cam.iy;
-  for (let i = G.veinHints.length - 1; i >= 0; i--) {
+  for (let i = 0; i < G.veinHints.length; i++) {
     const h = G.veinHints[i];
-    h.t += G.dtLast;
-    if (h.t > h.life) { G.veinHints.splice(i, 1); continue; }
     const a = 1 - h.t / h.life;
+    if (a <= 0) continue;
     const push = Math.sin(h.t * 12) * 1.5 + 4;
     g.save(); g.globalAlpha = a;
     drawSprite(g, VEIN_ARROW, frameAt(VEIN_ARROW, h.t),
@@ -188,16 +191,16 @@ export function drawLighting(g, G) {
   const lf = G.lf, world = G.world;
   const lw = lf.w, lh = lf.h;
   if (lw <= 0 || lh <= 0) return;
-  ensureLight(lw, lh);
+  ensureLight();
   const data = lightImg.data;
   const [str, stg, stb] = hexRGB(world.stratum.tint);
   // Push the veil most of the way to black. The stratum's colour survives only as a whisper,
   // which is what keeps an unlit chamber genuinely unknown instead of merely dim.
   const tr = (str * 0.34) | 0, tg = (stg * 0.34) | 0, tb = (stb * 0.34) | 0;
   const seen = world.seen, ww = world.w;
-  let i = 0;
   for (let y = 0; y < lh; y++) {
     const wrow = (y + lf.y0) * ww;
+    let i = y * LMAXW * 4;
     for (let x = 0; x < lw; x++) {
       let b = clamp(lf.buf[y * lw + x] / 8, 0, 1);
       b = Math.pow(b, 1.15);
@@ -208,7 +211,7 @@ export function drawLighting(g, G) {
       i += 4;
     }
   }
-  lightCtx.putImageData(lightImg, 0, 0);
+  lightCtx.putImageData(lightImg, 0, 0, 0, 0, lw, lh);
   g.save();
   g.imageSmoothingEnabled = true;
   const dx = lf.x0 * TS - G.cam.ix;
@@ -226,7 +229,10 @@ export function drawGlow(g, G) {
   g.globalCompositeOperation = 'lighter';
 
   if (!p.dead) {
-    const r = (p.lanternR * TS) * (0.5 + 0.5 * (p.light / p.lightMax)) * (p.dim ? 0.6 : 1);
+    // Exactly the expression game.js seeds the light field with, so the halo can never claim
+    // a bigger circle of certainty than the lantern is actually casting.
+    const reach = Math.max(2.4, p.lanternR * (0.35 + 0.65 * (p.light / p.lightMax)) * (p.dim ? 0.55 : 1));
+    const r = reach * TS;
     const lx = p.x - camX + p.facing * 3, ly = p.y - p.h * 0.86 - camY;
     const grad = g.createRadialGradient(lx, ly, 0, lx, ly, r);
     const flick = 0.86 + Math.sin(G.t * 9.3) * 0.05 + Math.sin(G.t * 23.7) * 0.03;
@@ -247,19 +253,35 @@ export function drawGlow(g, G) {
       const id = world.mat[row + tx];
       const e = TILES[id].emit;
       if (e < 0.12) continue;
-      const c = TILES[id].dust;
       const pulse = 0.82 + Math.sin(G.t * 2.4 + tx * 0.7 + ty * 1.3) * 0.18;
       const r = (7 + e * 26) * pulse;
       const lx = tx * TS + TS / 2 - camX, ly = ty * TS + TS / 2 - camY;
-      const grad = g.createRadialGradient(lx, ly, 0, lx, ly, r);
-      const [cr, cg, cb] = hexRGB(c);
-      grad.addColorStop(0, `rgba(${cr},${cg},${cb},${0.34 * e + 0.10})`);
-      grad.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
-      g.fillStyle = grad;
-      g.fillRect(lx - r, ly - r, r * 2, r * 2);
+      const sprite = glowSprite(TILES[id].dust);
+      g.globalAlpha = 0.34 * e + 0.10;
+      g.drawImage(sprite, Math.round(lx - r), Math.round(ly - r), Math.round(r * 2), Math.round(r * 2));
+      g.globalAlpha = 1;
     }
   }
   g.restore();
+}
+
+/** One baked radial glow per colour, reused every frame. */
+const glowCache = new Map();
+function glowSprite(hex) {
+  let c = glowCache.get(hex);
+  if (c) return c;
+  const S = 64;
+  c = makeCanvas(S, S);
+  const gg = c.getContext('2d');
+  const grad = gg.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  const [r, gr, b] = hexRGB(hex);
+  grad.addColorStop(0, `rgba(${r},${gr},${b},1)`);
+  grad.addColorStop(0.45, `rgba(${r},${gr},${b},0.35)`);
+  grad.addColorStop(1, `rgba(${r},${gr},${b},0)`);
+  gg.fillStyle = grad;
+  gg.fillRect(0, 0, S, S);
+  glowCache.set(hex, c);
+  return c;
 }
 
 export function drawVignette(g, G) {
