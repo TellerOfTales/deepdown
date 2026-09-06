@@ -107,6 +107,86 @@ const ok = (n, c, extra) => { console.log((c ? '  ok   ' : '  FAIL ') + n + (ext
   await page.keyboard.press('KeyQ'); await page.waitForTimeout(400);
   ok('a spent beacon does not fire on a tap', await M() === 'run', await M());
 
+  // Three ways the winch used to fire on a frame that had already stopped being a run. Each of
+  // them banked the haul twice, and the second bank found an emptied bag and wrote BANKED G0
+  // over the report of a good run.
+  {
+    await page.evaluate(() => { window.G.uiLock = 0; });
+    await page.keyboard.press('Space'); await page.waitForTimeout(800);
+    await page.evaluate(() => {
+      const G = window.G, W = G.world;
+      G.upgrades.beacon = 1; G.player.beacon = true; G.player.beaconUsed = false;
+      G.haul = 1000; G.haulItems = { relic: 1 }; G.weight = 100;
+      G.carried = [{ kind: 'relic', value: 1000, w: 100 }];
+      G.player.x = W.entryTX * 16 + 8; G.player.y = (W.entryTY + 1) * 16;
+      G.player.vx = 0; G.player.vy = 0;
+    });
+    await page.waitForTimeout(400);
+    const b0 = await page.evaluate(() => window.G.bank);
+    // E and Q in the same frame: ride the lift AND press the beacon.
+    await page.keyboard.down('KeyQ');
+    await page.keyboard.press('KeyE');
+    await page.waitForTimeout(400);
+    await page.keyboard.up('KeyQ');
+    const r = await page.evaluate(() => ({ bank: window.G.bank, lr: window.G.lastRun, used: window.G.player.beaconUsed }));
+    // Whichever of the two lands first is fine; what must never happen is BOTH banking, which
+    // left the second one writing a G0 report over a real run and eating the beacon for it.
+    ok('the lift and the beacon cannot both bank one run',
+       r.bank === b0 + 1000 && r.lr.value === 1000 && r.lr.fee === 0,
+       'banked G' + (r.bank - b0) + ', report says G' + r.lr.value + ' via ' + r.lr.reason);
+    ok('the report agrees with what was spent',
+       (r.lr.reason === 'beacon') === (r.used === true),
+       'reason=' + r.lr.reason + ' beaconUsed=' + r.used);
+  }
+  {
+    // The exact same frame, not merely the same moment: both keys injected into one input
+    // frame, which is what a real controller or a fast pair of thumbs can produce.
+    await page.evaluate(() => { window.G.uiLock = 0; });
+    await page.keyboard.press('Space'); await page.waitForTimeout(800);
+    const b0 = await page.evaluate(() => {
+      const G = window.G, W = G.world;
+      G.player.beacon = true; G.player.beaconUsed = false;
+      G.haul = 1200; G.haulItems = { relic: 1 }; G.weight = 100;
+      G.carried = [{ kind: 'relic', value: 1200, w: 100 }];
+      G.player.x = W.entryTX * 16 + 8; G.player.y = (W.entryTY + 1) * 16;
+      G.player.vx = 0; G.player.vy = 0;
+      return G.bank;
+    });
+    await page.waitForTimeout(350);
+    await page.evaluate(() => {
+      const i = window.__input;
+      i.pressedSet.add('KeyE'); i.pressedSet.add('KeyQ');
+      i.down.add('KeyE'); i.down.add('KeyQ');
+    });
+    await page.waitForTimeout(500);
+    await page.evaluate(() => { const i = window.__input; i.down.delete('KeyE'); i.down.delete('KeyQ'); });
+    const one = await page.evaluate(() => ({ bank: window.G.bank, lr: window.G.lastRun }));
+    ok('one frame, two exits, one bank', one.bank === b0 + 1200 && one.lr.value === 1200,
+       'banked G' + (one.bank - b0) + ', report G' + one.lr.value + ' via ' + one.lr.reason);
+  }
+
+  {
+    // Opening the shaft prompt at the rig must not charge the winch fee for a free lift.
+    await page.evaluate(() => { window.G.uiLock = 0; });
+    await page.keyboard.press('Space'); await page.waitForTimeout(800);
+    await page.evaluate(() => {
+      const G = window.G, W = G.world;
+      G.player.beacon = false;
+      G.haul = 1500; G.haulItems = { relic: 1 }; G.weight = 100;
+      G.carried = [{ kind: 'relic', value: 1500, w: 100 }];
+      G.player.x = W.shaftTX * 16 + 8; G.player.y = (W.shaftTY + 1) * 16;
+      G.player.vx = 0; G.player.vy = 0;
+    });
+    await page.waitForTimeout(400);
+    await page.keyboard.down('KeyQ'); await page.waitForTimeout(900);
+    await page.keyboard.press('KeyE'); await page.waitForTimeout(500);
+    const m = await page.evaluate(() => ({ mode: window.G.mode, winch: +(window.G.winch || 0).toFixed(2) }));
+    await page.keyboard.up('KeyQ'); await page.waitForTimeout(300);
+    ok('the shaft prompt is not a winch call', m.mode === 'shaft', m.mode + ' winch=' + m.winch);
+    ok('and the drum stops when the prompt takes over', m.winch === 0, 'winch=' + m.winch);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+  }
+
   // The fee falls as you walk toward the rig — the whole point of the mechanic.
   const quotes = await page.evaluate(() => {
     const G = window.G, W = G.world, out = [];
@@ -166,7 +246,59 @@ const ok = (n, c, extra) => { console.log((c ? '  ok   ' : '  FAIL ') + n + (ext
     await page.waitForTimeout(250);
   };
 
+  // The beacon on a thumb. It was bought for nine hundred gold and, until this test existed,
+  // could not be fired on the only platform it has a button on.
+  await page.evaluate(() => {
+    const G = window.G;
+    G.upgrades.beacon = 1; G.player.beacon = true; G.player.beaconUsed = false;
+    G.haul = 1500; G.haulItems = { relic: 1 }; G.weight = 200;
+    G.carried = [{ kind: 'relic', value: 1500, w: 200 }];
+  });
+  const beaconBank = await page.evaluate(() => window.G.bank);
+  await holdAt(exit.x, exit.y, 90);
+  const bres = await page.evaluate(() => ({ mode: window.G.mode, bank: window.G.bank,
+    used: window.G.player.beaconUsed, fee: window.G.lastRun && window.G.lastRun.fee }));
+  ok('a TAP on OUT fires the beacon', bres.mode === 'depot' && bres.used === true, bres.mode + ' used=' + bres.used);
+  ok('the thumb beacon pays no fee', bres.bank === beaconBank + 1500, 'G' + (bres.bank - beaconBank) + ' of G1500, fee ' + bres.fee);
+
+  // A held OUT must not carry into the next run. Rather than fight the menu with two synthetic
+  // fingers, this holds one down across the transition and puts the game back into a run
+  // underneath it — which is exactly the state a thumb resting on OUT produces.
+  await page.evaluate(() => { window.G.uiLock = 0; });
+  {
+    const p = V(exit.x, exit.y);
+    await page.evaluate(([x, y]) => {
+      const el = document.getElementById('game');
+      window.__stick = new Touch({ identifier: 31, target: el, clientX: x, clientY: y });
+      el.dispatchEvent(new TouchEvent('touchstart', { touches: [window.__stick], targetTouches: [window.__stick], changedTouches: [window.__stick], bubbles: true, cancelable: true }));
+    }, [p.x, p.y]);
+    await page.waitForTimeout(120);
+    await page.evaluate(() => { window.G.uiLock = 0; });
+    await page.keyboard.press('Space');          // DESCEND
+    await page.waitForTimeout(2400);
+    const held = await page.evaluate(() => ({ mode: window.G.mode, armed: window.G.winchArmed, winch: +(window.G.winch || 0).toFixed(2) }));
+    ok('a finger left on OUT does not end the next run', held.mode === 'run',
+       held.mode + ' armed=' + held.armed + ' winch=' + held.winch);
+    await page.evaluate(() => {
+      const el = document.getElementById('game');
+      el.dispatchEvent(new TouchEvent('touchend', { touches: [], targetTouches: [], changedTouches: [window.__stick], bubbles: true, cancelable: true }));
+    });
+    await page.waitForTimeout(300);
+    ok('and it works again once the finger lifts and returns', await page.evaluate(() => window.G.winchArmed) === true);
+  }
+
   const bank0 = await page.evaluate(() => window.G.bank);
+  await page.evaluate(() => {
+    const G = window.G, W = G.world;
+    const tx = Math.min(W.w - 12, W.shaftTX + 60), ty = Math.floor(W.h * 0.6);
+    for (let y = ty - 4; y <= ty + 4; y++) for (let x = tx - 4; x <= tx + 4; x++) W.set(x, y, 3);
+    for (let y = ty - 1; y <= ty; y++) W.set(tx, y, 0);
+    G.player.x = tx * 16 + 8; G.player.y = (ty + 1) * 16; G.player.vx = 0; G.player.vy = 0;
+    G.haul = 2400; G.haulItems = { relic: 1 }; G.weight = 300;
+    G.carried = [{ kind: 'relic', value: 2400, w: 300 }];
+    G.player.beacon = false;                       // the ordinary winch, not the beacon
+  });
+  await page.waitForTimeout(300);
   await holdAt(exit.x, exit.y, 450);
   ok('a short thumb-hold cancels', await M() === 'run', await M());
   await holdAt(exit.x, exit.y, 1700);

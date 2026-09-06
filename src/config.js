@@ -107,7 +107,8 @@ export const CFG = {
   winchMinCut: 0.08,       // the fee at the rig's feet
   winchMaxCut: 0.38,       // ...and at the far end of the map
   winchFarTiles: 80,       // distance over which the fee climbs from min to max
-  winchWakeRadius: 190,    // the drum is loud: it wakes what is sleeping nearby
+  // The drum is loud, but it does not WAKE things: it re-sounds at the miner's feet on the
+  // channel the burrower already hunts by. A dormant creature still gets to spring its own trap.
   toolMax: 100,
   toolWearTap: 0.15, toolWearHeavy: 0.55, toolWearHard: 0.55,
 

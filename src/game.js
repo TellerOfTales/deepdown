@@ -75,7 +75,7 @@ export function newGame() {
     ui: { sel: 0, tab: 0, scroll: 0 },
     shaft: { open: false, choice: 1, near: null },
     flash: { color: '#ffffff', a: 0 },
-    vignette: 0, hitstop: 0, danger: 0, uiLock: 0, winch: 0, winchQuote: 0,
+    vignette: 0, hitstop: 0, danger: 0, uiLock: 0, winch: 0, winchQuote: 0, winchArmed: false,
     aim: null, deathCause: '', deathRecorded: false, lastRun: null,
     runStart: { tiles: 0, strikes: 0, crits: 0 },
     sonar: { t: 0, x: 0, y: 0, r: 0 },
@@ -150,7 +150,7 @@ export function startRun(G, seed) {
   // The whole feel layer, not just the simulation: dying inside a discovery hitstop and
   // hammering R used to start the next run at 3.5% speed under the last run's callout.
   G.hitstop = 0; G.flash.a = 0; G.callout = null; G.msgs.length = 0;
-  G.danger = 0; G.vignette = 0; G.bagWarned = 0; G.winch = 0; G.winchQuote = 0;
+  G.danger = 0; G.vignette = 0; G.bagWarned = 0; G.winch = 0; G.winchQuote = 0; G.winchArmed = false;
   G.sonar.t = 0; G.sonarMapped = false;
   const p = G.player;
   p.reset(0, 0);
@@ -898,12 +898,13 @@ function updateRun(G, dt, input) {
   //
   // The first is that a shaft you dug is a ladder: hold UP and you brace and climb. Nothing on
   // screen says so, and a player who does not know it reads their own tunnel as a grave.
-  if (!G.tutorialShown.climb && G.depth > 6 && p.onGround === false && p.inChimney(world)) {
+  const coaching = G.stats.runs <= 3;
+  if (coaching && !G.tutorialShown.climb && G.depth > 6 && p.onGround === false && p.inChimney(world)) {
     G.tutorialShown.climb = 1;
     msg(G, G.touch ? 'HOLD UP ON THE PAD TO CLIMB A SHAFT' : 'HOLD UP TO CLIMB A SHAFT', '#7fd0f0');
   }
   // The second is that there is always a way out, and what it costs.
-  if (!G.tutorialShown.winch && G.haul > 0 && G.depth > 14) {
+  if (coaching && !G.tutorialShown.winch && G.haul > 0 && G.depth > 14) {
     G.tutorialShown.winch = 1;
     msg(G, G.touch ? 'HOLD OUT TO CALL THE WINCH - IT TAKES A CUT'
                    : 'HOLD Q TO CALL THE WINCH - IT TAKES A CUT', '#ffcf8a');
@@ -938,7 +939,7 @@ function updateRun(G, dt, input) {
     }
   }
 
-  if (input.pressed('pause') && G.mode === 'run') { G.mode = 'pause'; audio.ui('open'); return; }
+  if (input.pressed('pause') && G.mode === 'run') { G.mode = 'pause'; G.winch = 0; G.winchQuote = 0; audio.ui('open'); return; }
   if (input.pressed('mute')) { G.muted = !G.muted; audio.setMuted(G.muted); SaveMod.save(G); }
   if (input.pressed('dim')) { p.dim = !p.dim; audio.ui('tick'); msg(G, p.dim ? 'LANTERN DIMMED' : 'LANTERN UP', '#ffcf8a'); }
 
@@ -1106,14 +1107,27 @@ function updateRun(G, dt, input) {
  */
 function updateWinch(G, dt, input) {
   const p = G.player;
-  if (p.dead) { G.winch = 0; G.winchQuote = 0; return; }
+  // Only in the mine, and only on a frame that is still a run. The rig, the lift and the shaft
+  // prompt all change G.mode earlier in this same updateRun call and then fall through to here:
+  // without this guard, opening the shaft prompt at the rig charged the winch fee for a lift
+  // that is free, and taking the lift with Q also down banked the haul twice — the second bank
+  // finding an already-emptied bag and writing BANKED G0 over the report of a good run.
   const held = input.held('exfil');
+  // A hold has to START in this run. held() is level-triggered, so a thumb left resting on OUT
+  // through the Depot armed the next run's winch the instant it began and ended it before it
+  // started — over and over, for as long as the button was down. Read the release first, so a
+  // finger lifted during the Depot's input lock still counts.
+  if (!held) G.winchArmed = true;
+  if (G.mode !== 'run' || p.dead || G.uiLock > 0 || !G.winchArmed) {
+    G.winch = 0; G.winchQuote = 0; return;
+  }
 
   // The beacon is a single free, instant call. It fires on the press, not the hold, because
-  // that is what nine hundred gold bought.
-  if (p.beacon && !p.beaconUsed && input.pressed('exfil')) {
+  // that is what nine hundred gold bought. Riding it up with an empty bag is not a thing anyone
+  // means to do, and it would burn the one call the run has — the same guard the lift carries.
+  if (p.beacon && !p.beaconUsed && G.haul > 0 && input.pressed('exfil')) {
     p.beaconUsed = true;
-    G.winch = 0;
+    G.winch = 0; G.winchArmed = false;
     bankRun(G, 'beacon', 0);
     msg(G, 'BEACON FIRED - NO FEE', '#7ff0a0');
     return;
@@ -1136,7 +1150,7 @@ function updateWinch(G, dt, input) {
   p.lastStrikeX = p.x; p.lastStrikeY = p.cy; p.lastStrikeT = 3.0;
   if (G.winch >= CFG.winchHold) {
     const fee = winchFee(G);
-    G.winch = 0;
+    G.winch = 0; G.winchArmed = false;
     bankRun(G, 'winch', fee);
     msg(G, fee > 0 ? 'WINCH FEE ' + money(fee) : 'HAULED OUT', fee > 0 ? '#ffcf8a' : '#7ff0a0');
   }

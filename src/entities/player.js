@@ -128,12 +128,22 @@ export class Player {
     const cx = Math.floor(this.x / TS);
     // Standing inside rock is not standing in a shaft.
     if (world.solid(cx, ty)) return false;
-    let l = false, r = false;
-    for (let d = 1; d <= 2 && !(l && r); d++) {
-      if (!l && world.solid(cx - d, ty)) l = true;
-      if (!r && world.solid(cx + d, ty)) r = true;
+    // Distances to the nearest wall each side, 0 for "no wall within reach".
+    let dl = 0, dr = 0;
+    for (let d = 1; d <= 2; d++) {
+      if (!dl && world.solid(cx - d, ty)) dl = d;
+      if (!dr && world.solid(cx + d, ty)) dr = d;
     }
-    if (!(this.spikes ? (l || r) : (l && r))) return false;
+    if (this.spikes) {
+      // Spikes bite a wall you are ACTUALLY AGAINST. Reaching two tiles for them let the miner
+      // climb open air alongside a cavern wall they were nowhere near.
+      if (dl !== 1 && dr !== 1) return false;
+    } else {
+      // Bare-handed you are wedging yourself between two walls, so both have to be there and
+      // the gap has to be narrow enough to brace: dl + dr of 2 or 3 is a shaft one or two tiles
+      // wide. Four is three tiles wide, and nobody braces across that.
+      if (!dl || !dr || dl + dr > 3) return false;
+    }
     // There must be somewhere to go, or standing in a dug corridor and aiming up would make
     // the miner hover instead of stand.
     const headTY = Math.floor((this.y - this.h - 1) / TS);

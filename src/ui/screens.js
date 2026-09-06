@@ -363,13 +363,13 @@ export function deathLayout() {
   };
 }
 
-/** Likewise for the pause screen: RESUME is a tap, ABANDON is a hold. */
+/** The pause screen: a RESUME target, and the line under it that says how to leave. */
 export function pauseLayout() {
   const foot = VH - SAFE.b;
   const w = Math.min(VW - 24, 220), x = Math.round((VW - w) / 2);
   return {
     resume: { x, y: foot - 44, w, h: 22 },
-    abandon: { x, y: foot - 20, w, h: 18 },
+    hint: { x, y: foot - 20, w, h: 18 },
   };
 }
 
@@ -575,9 +575,9 @@ export function drawPause(g, G, dt) {
     { color: P.UI_GOOD, align: 'center', scale: 2 });
 
   // The way out belongs on the screen a stuck player opens.
-  text(g, G.touch ? 'HOLD OUT ANYWHERE TO CALL THE WINCH UP'
-                  : 'HOLD Q ANYWHERE TO CALL THE WINCH UP',
-    cx, PL.abandon.y + 2, { color: P.UI_GOLD, align: 'center', maxWidth: VW - 12 });
+  text(g, G.touch ? 'IN THE MINE, HOLD OUT TO CALL THE WINCH UP'
+                  : 'IN THE MINE, HOLD Q TO CALL THE WINCH UP',
+    cx, PL.hint.y + 2, { color: P.UI_GOLD, align: 'center', maxWidth: VW - 12 });
   text(g, 'IT TAKES A CUT OF THE HAUL - LESS NEAR THE RIG',
-    cx, PL.abandon.y + 12, { color: P.UI_DARK, align: 'center', maxWidth: VW - 12 });
+    cx, PL.hint.y + 12, { color: P.UI_DARK, align: 'center', maxWidth: VW - 12 });
 }

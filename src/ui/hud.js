@@ -163,7 +163,7 @@ export function drawHUD(g, G, dt) {
     drawSprite(g, SP.ICON_SONAR, frameAt(SP.ICON_SONAR, H.t), cx, toolY, null);
     text(g, String(p.charges.sonar), cx + 11, toolY + 4, { color: P.UI_BONE }); cx += 20;
   }
-  if (p.beacon && !p.beaconUsed) text(g, 'BEACON', cx, toolY + 4, { color: P.UI_GOOD });
+  if (p.beacon && !p.beaconUsed) text(g, tch ? 'BEACON' : 'Q BEACON', cx, toolY + 4, { color: P.UI_GOOD });
 
   // ── AT RISK — the emotional centre of the screen ──────────────────────────
   const ref = 900 * STRATA[Math.min(STRATA.length - 1, G.strataIdx + 1)].valueMul;

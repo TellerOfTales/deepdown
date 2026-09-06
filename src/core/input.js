@@ -210,6 +210,7 @@ export class Input {
     if (a === 'jump' && this.touch._pjump) return true;
     if (a === 'util' && (this.rpressed || this.touch._putil)) return true;
     if (a === 'sonar' && this.touch._psonar) return true;
+    if (a === 'exfil' && this.touch._pexit) return true;
     if (a === 'dim' && this.touch._pdim) return true;
     if (a === 'pause' && this.touch._ppause) return true;
     if (a === 'confirm' && (this.mpressed || this.touch._pdig || this.touch._ptap)) return true;
@@ -233,6 +234,6 @@ export class Input {
     this.mouseMoved = 0;
     this.touch._pdig = false; this.touch._pjump = false; this.touch._putil = false;
     this.touch._ptap = false; this.touch._puse = false; this.touch._psonar = false;
-    this.touch._pdim = false; this.touch._ppause = false;
+    this.touch._pdim = false; this.touch._ppause = false; this.touch._pexit = false;
   }
 }
