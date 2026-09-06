@@ -18,7 +18,12 @@ export function load() {
     return {
       bank: d.bank | 0,
       upgrades: d.upgrades || {},
-      journal: Array.isArray(d.journal) ? d.journal : [],
+      // v1 stored bare ids; entries now carry the depth they were found at, because "where"
+      // is half of what makes an archive entry worth reading.
+      journal: Array.isArray(d.journal)
+        ? d.journal.map(j => (typeof j === 'string' ? { id: j, depth: 0 } : { id: j.id, depth: j.depth | 0 }))
+                   .filter(j => j && typeof j.id === 'string')
+        : [],
       discoveries: Array.isArray(d.discoveries) ? d.discoveries : [],
       stats: Object.assign(base.stats, d.stats || {}),
       muted: !!d.muted,
@@ -31,7 +36,7 @@ export function save(G) {
     localStorage.setItem(KEY, JSON.stringify({
       bank: G.bank,
       upgrades: G.upgrades,
-      journal: G.journal.filter(j => j.found).map(j => j.id),
+      journal: G.journal.filter(j => j.found).map(j => ({ id: j.id, depth: j.depth | 0 })),
       discoveries: Array.from(G.discoveries),
       stats: G.stats,
       muted: G.muted,

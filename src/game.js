@@ -63,7 +63,10 @@ export function newGame() {
     haul: 0, haulItems: {}, weight: 0, carried: [],
     bank: s.bank, seed: 1,
     msgs: [], callout: null,
-    journal: RELICS.map(r => ({ id: r[0], name: r[1], blurb: r[2], depth: 0, found: s.journal.includes(r[0]) })),
+    journal: RELICS.map(r => {
+      const saved = s.journal.find(j => j.id === r[0]);
+      return { id: r[0], name: r[1], blurb: r[2], depth: saved ? saved.depth : 0, found: !!saved };
+    }),
     discoveries: new Set(s.discoveries),
     runLearned: [],
     upgrades: s.upgrades, stats: s.stats, muted: s.muted,
