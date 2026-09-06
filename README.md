@@ -29,7 +29,8 @@ npm run build        # dist/deeper.html
 | **W / S** or **↑ / ↓** | aim the pick up / down · climb a chimney |
 | **SPACE** / **J** / **click** | **DIG** — tap on the beat, or hold for a heavy strike |
 | **K** / **X** / **SHIFT** | jump |
-| **L** / **C** / **right-click** | use a charge (blast / sonar) |
+| **L** / **C** / **right-click** | blast charge |
+| **V** | sonar pulse |
 | **E** | interact — the shaft, the lift |
 | **F** | dim the lantern (lasts longer, attracts less) |
 | **TAB** | field journal (from the Depot) |
@@ -37,6 +38,7 @@ npm run build        # dist/deeper.html
 | **ESC** | pause · **M** mute |
 
 Touch: drag the left half of the screen to move, big button on the right to dig.
+In the Depot you can click a row to select it, click it again to buy, and click the bar to descend.
 
 ## The one mechanic to understand
 
