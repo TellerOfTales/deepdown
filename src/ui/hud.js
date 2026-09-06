@@ -107,18 +107,22 @@ export function drawHUD(g, G, dt) {
   text(g, s.roman + '  ' + s.name, VW - 6, 22, { color: P.UI_DIM, align: 'right' });
 
   // ── tool + charges ────────────────────────────────────────────────────────
-  drawSprite(g, SP.ICON_PICK, 0, 6, VH - 17, null);
-  bar(g, 18, VH - 13, 34, 5, H.tool, H.tool < 0.2 ? P.UI_DANGER : P.STEEL3);
+  // On a touch device both bottom corners belong to thumbs, so the whole readout moves up
+  // under the health and depth blocks instead of fighting the DIG button.
+  const touch = !!G.touch;
+  const toolY = touch ? 31 : VH - 17;
+  drawSprite(g, SP.ICON_PICK, 0, 6, toolY, null);
+  bar(g, 18, toolY + 4, 34, 5, H.tool, H.tool < 0.2 ? P.UI_DANGER : P.STEEL3);
   let cx = 58;
   if (p.charges.bomb > 0) {
-    drawSprite(g, SP.ICON_BOMB, frameAt(SP.ICON_BOMB, H.t), cx, VH - 17, null);
-    text(g, String(p.charges.bomb), cx + 10, VH - 13, { color: P.UI_BONE }); cx += 20;
+    drawSprite(g, SP.ICON_BOMB, frameAt(SP.ICON_BOMB, H.t), cx, toolY, null);
+    text(g, String(p.charges.bomb), cx + 10, toolY + 4, { color: P.UI_BONE }); cx += 20;
   }
   if (p.charges.sonar > 0) {
-    drawSprite(g, SP.ICON_SONAR, frameAt(SP.ICON_SONAR, H.t), cx, VH - 17, null);
-    text(g, String(p.charges.sonar), cx + 11, VH - 13, { color: P.UI_BONE }); cx += 20;
+    drawSprite(g, SP.ICON_SONAR, frameAt(SP.ICON_SONAR, H.t), cx, toolY, null);
+    text(g, String(p.charges.sonar), cx + 11, toolY + 4, { color: P.UI_BONE }); cx += 20;
   }
-  if (p.beacon && !p.beaconUsed) text(g, 'Q BEACON', cx, VH - 13, { color: P.UI_GOOD });
+  if (p.beacon && !p.beaconUsed) text(g, touch ? 'BEACON' : 'Q BEACON', cx, toolY + 4, { color: P.UI_GOOD });
 
   // ── AT RISK — the emotional centre of the screen ──────────────────────────
   const ref = 900 * STRATA[Math.min(STRATA.length - 1, G.strataIdx + 1)].valueMul;
@@ -127,17 +131,18 @@ export function drawHUD(g, G, dt) {
   // A heartbeat, not a size jump: the number swells in brightness as the haul grows, so the
   // player feels the stake rising without the layout twitching.
   const beat = frac > 0.5 ? 0.78 + Math.abs(Math.sin(H.t * (1.6 + frac * 2.6))) * 0.22 * frac : 1;
-  text(g, 'AT RISK', VW - 6, VH - 34, { color: P.UI_DIM, align: 'right' });
-  moneyBig(g, G.haul, VW - 6, VH - 27, 2, col, beat);
+  const riskY = touch ? 34 : VH - 34;
+  text(g, 'AT RISK', VW - 6, riskY, { color: P.UI_DIM, align: 'right' });
+  moneyBig(g, G.haul, VW - 6, riskY + 7, 2, col, beat);
   const wfrac = G.weight / p.carryMax;
   const full = wfrac >= 0.999;
   const shake = full ? Math.round(Math.sin(H.t * 30) * 1) : 0;
-  bar(g, VW - 6 - 54 + shake, VH - 12, 54, 4, wfrac, full ? P.UI_DANGER : wfrac > 0.8 ? P.MAG4 : P.UI_DIM);
-  if (full) text(g, 'BAG FULL', VW - 62, VH - 12, { color: P.UI_DANGER, align: 'right' });
+  bar(g, VW - 6 - 54 + shake, riskY + 22, 54, 4, wfrac, full ? P.UI_DANGER : wfrac > 0.8 ? P.MAG4 : P.UI_DIM);
+  if (full) text(g, 'BAG FULL', VW - 62, riskY + 22, { color: P.UI_DANGER, align: 'right' });
 
   // ── combo ─────────────────────────────────────────────────────────────────
   if (p.combo >= 2) {
-    const cxp = VW / 2, cyp = VH - 46;
+    const cxp = VW / 2, cyp = touch ? VH - 30 : VH - 46;
     const sc = p.combo >= 12 ? 3 : p.combo >= 5 ? 2 : 1;
     const cc = p.combo >= 12 ? P.CYAN4 : p.combo >= 5 ? P.GOLD4 : P.UI_BONE;
     text(g, 'x' + p.combo, cxp, cyp, { color: cc, align: 'center', scale: sc, shadow: true });
@@ -152,7 +157,7 @@ export function drawHUD(g, G, dt) {
     // Before the first combo exists, the beat still needs a home on screen.
     g.save(); g.globalAlpha = 0.5;
     g.fillStyle = P.UI_WHITE;
-    g.fillRect(VW / 2 - 6, VH - 40, 12, 1);
+    g.fillRect(VW / 2 - 6, touch ? VH - 24 : VH - 40, 12, 1);
     g.restore();
   }
 

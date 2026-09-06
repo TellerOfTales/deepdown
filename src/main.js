@@ -43,10 +43,11 @@ buildAtlas();
 // Touch controls: a big DIG button under the right thumb, jump and utility beside it.
 const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 input.touchButtons = [
-  { id: 'dig', x: VW - 46, y: VH - 44, r: 34 },
-  { id: 'jump', x: VW - 100, y: VH - 30, r: 22 },
-  { id: 'util', x: VW - 96, y: VH - 84, r: 20 },
+  { id: 'dig', x: VW - 44, y: VH - 42, r: 33 },
+  { id: 'jump', x: VW - 104, y: VH - 26, r: 21 },
+  { id: 'util', x: VW - 108, y: VH - 78, r: 19 },
 ];
+G.touch = isTouch;   // the HUD moves out of the way of thumbs
 
 function drawTouchUI() {
   if (!isTouch) return;
@@ -56,10 +57,10 @@ function drawTouchUI() {
     g.fillStyle = input.touch[b.id] ? P.UI_GOLD : P.UI_WHITE;
     g.beginPath(); g.arc(b.x, b.y, b.r, 0, Math.PI * 2); g.fill();
   }
-  g.globalAlpha = 0.75;
-  text(g, 'DIG', VW - 46, VH - 48, { color: P.INK, align: 'center', scale: 1 });
-  text(g, 'JMP', VW - 100, VH - 34, { color: P.INK, align: 'center' });
-  text(g, 'ITEM', VW - 96, VH - 88, { color: P.INK, align: 'center' });
+  g.globalAlpha = 0.8;
+  text(g, 'DIG', VW - 44, VH - 45, { color: P.INK, align: 'center', scale: 1 });
+  text(g, 'JMP', VW - 104, VH - 29, { color: P.INK, align: 'center' });
+  text(g, 'ITEM', VW - 108, VH - 81, { color: P.INK, align: 'center' });
   if (input.touch.active) {
     g.globalAlpha = 0.2; g.fillStyle = P.UI_WHITE;
     g.beginPath(); g.arc(70, VH - 56, 34, 0, Math.PI * 2); g.fill();
