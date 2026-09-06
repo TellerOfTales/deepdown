@@ -91,6 +91,39 @@ if (script === 'play') {
     };
   });
   console.log('STATE', JSON.stringify(state, null, 1));
+} else if (script === 'descend') {
+  // Prove the whole expedition arc: run -> shaft -> stratum II -> shaft -> stratum III
+  await page.keyboard.press('Enter'); await page.waitForTimeout(300);
+  await page.keyboard.press('Space'); await page.waitForTimeout(700);
+  for (let s = 0; s < 2; s++) {
+    await page.evaluate((step) => {
+      const G = window.G;
+      G.haul += 900 + step * 1200;
+      G.player.x = G.world.shaftTX * 16 + 8;
+      G.player.y = (G.world.shaftTY + 1) * 16;
+      G.player.vx = 0; G.player.vy = 0;
+      G.cam.snapTo(G.player.x - 240, G.player.y - 135, G.world);
+    }, s);
+    await page.waitForTimeout(350);
+    await page.keyboard.press('KeyE'); await page.waitForTimeout(300);
+    await page.keyboard.press('ArrowDown'); await page.waitForTimeout(150);
+    await page.keyboard.press('KeyE'); await page.waitForTimeout(900);
+    await shot('d' + (s + 1) + '-stratum' + (s + 2));
+    // dig around a little so the new stratum's rock gets exercised
+    for (let i = 0; i < 24; i++) {
+      await page.keyboard.down(i % 3 === 2 ? 'ArrowDown' : 'ArrowRight');
+      await page.keyboard.press('Space'); await page.waitForTimeout(262);
+      await page.keyboard.up(i % 3 === 2 ? 'ArrowDown' : 'ArrowRight');
+    }
+    await shot('d' + (s + 1) + 'b-dug' + (s + 2));
+  }
+  const st = await page.evaluate(() => ({
+    mode: window.G.mode, stratum: window.G.strataIdx, depth: window.G.depth,
+    haul: Math.round(window.G.haul), tiles: window.G.stats.tilesBroken,
+    hp: window.G.player.hp, light: Math.round(window.G.player.light),
+    enemies: window.G.enemies.length, learned: Array.from(window.G.discoveries),
+  }));
+  console.log('DESCEND', JSON.stringify(st));
 } else if (script === 'screens') {
   // Walk every full-screen state and the shaft decision, driving state directly through window.G
   await page.keyboard.press('Enter');  await page.waitForTimeout(300);

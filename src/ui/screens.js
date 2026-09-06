@@ -169,9 +169,10 @@ export function drawDepot(g, G, dt) {
     const curLvl = G.upgrades[cur.id] | 0;
     g.fillStyle = P.UI_DARK;
     g.fillRect(lx, ly + Math.min(view, UPGRADES.length) * rowH + 2, lw, 1);
-    text(g, cur.desc, lx + 2, ly + Math.min(view, UPGRADES.length) * rowH + 7, { color: P.UI_COOL });
-    text(g, curLvl >= cur.max ? 'FULLY FITTED' : 'LEVEL ' + curLvl + ' OF ' + cur.max,
-      lx + lw - 2, ly + Math.min(view, UPGRADES.length) * rowH + 7, { color: P.UI_DARK, align: 'right' });
+    // The pips on the row already say the level; the line under the list is for the WHY.
+    text(g, curLvl >= cur.max ? 'FITTED. ' + cur.desc : cur.desc,
+      lx + 2, ly + Math.min(view, UPGRADES.length) * rowH + 7,
+      { color: curLvl >= cur.max ? P.UI_GOOD : P.UI_COOL, maxWidth: lw - 6 });
   }
 
   // ── right column ──────────────────────────────────────────────────────────
@@ -206,14 +207,14 @@ export function drawDepot(g, G, dt) {
   text(g, 'TAB  FIELD JOURNAL', rx + 6, 199, { color: P.UI_DARK });
 
   // ── the button that matters ───────────────────────────────────────────────
-  const by = VH - 32, bh = 22;
+  const by = VH - 34, bh = 22;
   const pulse = 0.62 + Math.sin(S.t * 3.2) * 0.38;
   g.save();
   g.globalAlpha = 0.25 + pulse * 0.35;
   g.fillStyle = P.GOLD1; g.fillRect(10, by, VW - 20, bh);
   g.restore();
   g.strokeStyle = P.UI_GOLD; g.strokeRect(10.5, by + 0.5, VW - 21, bh - 1);
-  text(g, 'SPACE   DESCEND', VW / 2, by + 7, { color: P.GOLD5, align: 'center', scale: 2, shadow: true });
+  text(g, 'SPACE   DESCEND', VW / 2, by + 6, { color: P.GOLD5, align: 'center', scale: 2, shadow: true });
   text(g, 'UP/DOWN SELECT    ENTER BUY', VW / 2, VH - 8, { color: P.UI_DARK, align: 'center' });
 }
 
