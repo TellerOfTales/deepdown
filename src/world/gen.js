@@ -59,6 +59,7 @@ export function generate(world, rand, meta) {
   descentShaft(G);
   creatures(G);
   scatter(G);
+  clearSpawnAroundEntry(G);
 
   world.hint = HINTS[idx] || HINTS[0];
   return world;
@@ -541,6 +542,18 @@ function creatures(G) {
       }
     }
   }
+}
+
+/**
+ * Nothing lives within fourteen metres of the lift.
+ *
+ * The first fifteen seconds of an expedition have to be about the rock. A crawler dropping on a
+ * player who has not yet learned what a crawler is teaches nothing except that the game is
+ * unfair, and GDD Pillar 4 says failure must read as "I should not have done that".
+ */
+function clearSpawnAroundEntry(G) {
+  const ex = G.world.entryTX, ey = G.world.entryTY;
+  G.world.spawns = G.world.spawns.filter(s => Math.hypot(s.tx - ex, s.ty - ey) > 14);
 }
 
 function scatter(G) {

@@ -7,6 +7,13 @@
 import { CFG, TS, WEIGHT } from '../config.js';
 import { clamp } from '../core/rng.js';
 
+/**
+ * How far a find will come to you. A nugget is worth a couple of tiles of courtesy; a relic is
+ * the emotional payoff of an entire expedition and must never be left sealed inside the skull
+ * cluster it came out of because the player happened to break the wrong wall first.
+ */
+const REACH = { relic: 3.4, gem: 1.8, oil: 1.5 };
+
 export class Loot {
   constructor() { this.list = []; this.pool = []; }
 
@@ -35,9 +42,10 @@ export class Loot {
       const d2 = dx * dx + dy * dy;
 
       if (o.reject > 0) o.reject -= dt;
-      if (o.t > 0.22 && o.reject <= 0 && d2 < CFG.magnetRadius * CFG.magnetRadius) {
+      const reach = CFG.magnetRadius * (REACH[o.kind] || 1);
+      if (o.t > 0.22 && o.reject <= 0 && d2 < reach * reach) {
         const d = Math.max(1, Math.sqrt(d2));
-        const pull = CFG.magnetForce * (1 - d / CFG.magnetRadius) * dt;
+        const pull = CFG.magnetForce * (1 - d / reach) * dt;
         o.vx += dx / d * pull; o.vy += dy / d * pull;
         o.mag = clamp(o.mag + dt * 5, 0, 1);
       } else {

@@ -91,6 +91,36 @@ if (script === 'play') {
     };
   });
   console.log('STATE', JSON.stringify(state, null, 1));
+} else if (script === 'opening') {
+  // The first thirty seconds, as a new player would actually meet them.
+  await shot('o0-title');
+  await page.keyboard.press('Enter'); await page.waitForTimeout(900);
+  await shot('o1-first-breath');
+  const BEAT = 262;
+  let held = null;
+  const hold = async (k) => { if (held !== k) { if (held) await page.keyboard.up(held); held = k; if (k) await page.keyboard.down(k); } };
+  let shotN = 2;
+  for (let i = 0; i < 115; i++) {
+    await hold(i < 8 ? 'ArrowRight' : (Math.floor(i / 11) % 3 === 2 ? 'ArrowRight' : 'ArrowDown'));
+    await page.keyboard.press('Space');
+    await page.waitForTimeout(BEAT);
+    if (i % 16 === 15 && shotN < 9) await shot('o' + (shotN++) + '-t' + Math.round(i * BEAT / 1000) + 's');
+  }
+  await hold(null);
+  await page.waitForTimeout(400);
+  const st = await page.evaluate(() => ({
+    t: Math.round(window.G.runT), depth: window.G.depth, haul: Math.round(window.G.haul),
+    hp: window.G.player.hp, light: Math.round(window.G.player.light),
+    lightPct: Math.round(window.G.player.light / window.G.player.lightMax * 100),
+    tiles: window.G.stats.tilesBroken, bestCombo: window.G.player.bestCombo,
+    onBeat: Math.round(window.G.stats.crits / Math.max(1, window.G.stats.strikes) * 100),
+    learned: Array.from(window.G.discoveries), weightPct: Math.round(window.G.weight / window.G.player.carryMax * 100),
+    relics: window.G.journal.filter(j => j.found).length,
+    lootOnGround: window.G.loot.list.length,
+    lootKinds: window.G.loot.list.map(o => o.kind),
+    carried: window.G.carried.length,
+  }));
+  console.log('OPENING', JSON.stringify(st));
 } else if (script === 'clues') {
   // Every learnable rule in the game, exercised in situ. If one of these stops firing, the
   // second design pillar ("the environment is information") has quietly broken.

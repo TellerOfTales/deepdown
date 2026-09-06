@@ -71,7 +71,7 @@ export const CFG = {
   toolWearTap: 0.15, toolWearHeavy: 0.55, toolWearHard: 0.55,
 
   // ── loot ─────────────────────────────────────────────────────────────────────
-  magnetRadius: 34, magnetForce: 500, pickupRadius: 9,
+  magnetRadius: 46, magnetForce: 560, pickupRadius: 10,
   lootLife: 999,
 
   // ── enemies ──────────────────────────────────────────────────────────────────

@@ -94,13 +94,15 @@ function drawRun(withHud) {
 
 function drawInteractHint() {
   if (G.callout) return;
-  const y = 176;
-  const label = G.shaft.near === 'entry' ? 'E  EXTRACT - BANK YOUR HAUL' : 'E  THE SHAFT';
+  // Standing on your own lift with an empty bag is not a decision, so do not dress it as one.
+  if (G.shaft.near === 'entry' && G.haul <= 0) return;
+  const label = G.shaft.near === 'entry' ? 'E  RIDE UP - BANK ' + moneyStr(G.haul) : 'E  THE SHAFT';
   const pulse = 0.65 + Math.sin(G.t * 5) * 0.35;
   g.save(); g.globalAlpha = pulse;
-  text(g, label, VW / 2, y, { color: P.UI_GOLD, align: 'center', shadow: true });
+  text(g, label, VW / 2, 166, { color: P.UI_GOLD, align: 'center', shadow: true });
   g.restore();
 }
+const moneyStr = (n) => 'G' + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
 function drawSonar() {
   if (G.sonar.t <= 0) return;
