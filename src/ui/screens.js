@@ -274,9 +274,9 @@ export function drawDeath(g, G, dt) {
   }
 
   // 3. the dry facts
-  const st = G.stats;
-  const acc = st.strikes ? Math.round(st.crits / st.strikes * 100) : 0;
-  text(g, 'TILES ' + G.stats.tilesBroken + '     BEST COMBO x' + G.player.bestCombo +
+  // This run's numbers, not a lifetime total dressed up as one.
+  const acc = lr.strikes ? Math.round(lr.crits / lr.strikes * 100) : 0;
+  text(g, 'TILES ' + (lr.tiles | 0) + '     BEST COMBO x' + (lr.combo | 0) +
         '     ON THE BEAT ' + acc + '%     ' + Math.round(lr.time) + 'S',
     VW / 2, VH - 46, { color: P.UI_DARK, align: 'center' });
 

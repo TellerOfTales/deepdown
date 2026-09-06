@@ -51,7 +51,11 @@ input.touchButtons = [
   { id: 'dig', x: VW - 44, y: VH - 42, r: 33 },
   { id: 'jump', x: VW - 104, y: VH - 26, r: 21 },
   { id: 'util', x: VW - 108, y: VH - 78, r: 19 },
+  // USE appears only while you are standing on the rig. A permanent button here would eat DIG
+  // taps for the whole run to serve two moments of it; a contextual one costs nothing.
+  { id: 'use', x: VW - 46, y: VH - 104, r: 20, on: false },
 ];
+const useBtn = input.touchButtons[3];
 G.touch = isTouch;   // the HUD moves out of the way of thumbs
 
 function drawTouchUI() {
@@ -59,6 +63,7 @@ function drawTouchUI() {
   g.save();
   g.globalAlpha = 0.28;
   for (const b of input.touchButtons) {
+    if (b.on === false) continue;
     g.fillStyle = input.touch[b.id] ? P.UI_GOLD : P.UI_WHITE;
     g.beginPath(); g.arc(b.x, b.y, b.r, 0, Math.PI * 2); g.fill();
   }
@@ -66,6 +71,7 @@ function drawTouchUI() {
   text(g, 'DIG', VW - 44, VH - 45, { color: P.INK, align: 'center', scale: 1 });
   text(g, 'JMP', VW - 104, VH - 29, { color: P.INK, align: 'center' });
   text(g, 'ITEM', VW - 108, VH - 81, { color: P.INK, align: 'center' });
+  if (useBtn.on !== false) text(g, 'USE', VW - 46, VH - 107, { color: P.INK, align: 'center' });
   if (input.touch.active) {
     g.globalAlpha = 0.2; g.fillStyle = P.UI_WHITE;
     g.beginPath(); g.arc(70, VH - 56, 34, 0, Math.PI * 2); g.fill();
@@ -121,7 +127,11 @@ function drawSonar() {
   const sx = Math.round(G.sonar.x - camX), sy = Math.round(G.sonar.y - camY);
   // The wavefront outruns the viewport in about a second; past that every one of its ~4700
   // fillRects lands off-screen, and this is a game whose loop is a rhythm.
-  if (sx + r >= 0 && sy + r >= 0 && sx - r <= VW && sy - r <= VH) pixelRing(g, sx, sy, r, 1);
+  // ...and reject once the whole circle has grown past every corner. The pulse is anchored to
+  // where the player stood, and the camera follows the player, so its bounding box never leaves
+  // the screen — the box test alone let ~400,000 off-screen fillRects through per pulse.
+  const far = Math.hypot(Math.max(sx, VW - sx), Math.max(sy, VH - sy));
+  if (r <= far && sx + r >= 0 && sy + r >= 0 && sx - r <= VW && sy - r <= VH) pixelRing(g, sx, sy, r, 1);
   const R = 15;
   const tx0 = Math.floor(G.sonar.x / TS), ty0 = Math.floor(G.sonar.y / TS);
   for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
@@ -149,6 +159,8 @@ function frame(now) {
   if (dt < 0.0005) dt = 0.0005;
   gameUpdate(G, dt, input);
   input.endFrame();
+  input.uiPointer = G.mode !== 'run';   // menus take taps; only a run takes the stick
+  useBtn.on = G.mode === 'run' && !!G.shaft.near && !G.player.dead;
   hudUpdate(G, dt);
   screensUpdate(G, dt);
 

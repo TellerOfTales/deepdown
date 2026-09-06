@@ -346,7 +346,10 @@ export class Player {
     if (dy > 0) {
       a.tx = cxT; a.ty = Math.floor((this.y + 0.5) / TS); a.second = -1;
     } else if (dy < 0) {
-      a.tx = cxT; a.ty = Math.floor((this.y - this.h - 0.5) / TS); a.second = -1;
+      // The tile ABOVE the collision box. floor((y - h) / TS) is the tile the head is inside,
+      // which must be air for the player to be standing there at all — aiming at it meant
+      // digging upward simply did nothing, on every strike, in every corridor.
+      a.tx = cxT; a.ty = Math.floor((this.y - this.h) / TS) - 1; a.second = -1;
     } else {
       const sgn = dx || this.facing;
       a.tx = Math.floor((this.x + sgn * (this.w / 2 - 0.5)) / TS) + sgn;

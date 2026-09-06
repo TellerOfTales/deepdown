@@ -349,14 +349,16 @@ function fossils(G) {
       // Stop walking, but keep what has already been laid: zeroing ok skipped the SKULL while
       // leaving its vertebrae and BONEHINT clues in the world, which is the lie inverted.
       // The clamp on the skull position below is what keeps it on the map.
-      if (px < 4 || py < 3 || px >= W - 4 || py >= H - 4) break;
+      // Clamp back inside rather than abandoning: the vertebrae and their BONEHINT clues are
+      // already in the world by now, so bailing out promised a skull that was never placed.
+      x = clamp(x, 5, W - 6); y = clamp(y, 4, H - 6);
       const r = 1.2 - v / verts * 0.5;
       blob(G, px, py, r, T.BONE);
       ok++;
       for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++)
         if (rand.f() < 0.30) deco(G, px + ox, py + oy, D.BONEHINT);
     }
-    if (ok < 3) continue;
+    if (ok < 1) continue;
     // the skull, at the end of the curve, exactly where the anatomy said it would be
     a += curl; x += Math.cos(a) * 2.4; y += Math.sin(a) * 2.0;
     const sx = clamp(Math.round(x), 4, W - 5), sy = clamp(Math.round(y), 4, H - 5);

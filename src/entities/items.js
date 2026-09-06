@@ -25,7 +25,7 @@ export class Loot {
     const spd = 40 + (rand ? rand.f(0, 55) : 20);
     o.vx = (dirX || 0) * -22 + a * spd;
     o.vy = -50 - (rand ? rand.f(0, 60) : 30) + (dirY || 0) * -14;
-    o.t = 0; o.mag = 0; o.dead = false; o.rest = 0; o.reject = 0;
+    o.t = 0; o.mag = 0; o.dead = false; o.rest = 0; o.reject = 0; o.refusedW = undefined;
     o.spin = rand ? rand.f(0, 6) : 0;
     this.list.push(o);
     return o;
@@ -42,8 +42,12 @@ export class Loot {
       const d2 = dx * dx + dy * dy;
 
       if (o.reject > 0) { o.reject -= dt; o.mag = 0; }
+      // A refusal stands until the bag changes. Distance alone could never hold: drag makes the
+      // push-off converge to 0.73x the item's own magnet reach, so it always drifted back in and
+      // the bag-full warning fired every few seconds for the rest of the run.
+      const refused = o.refusedW !== undefined && o.refusedW === ctx.weight;
       const reach = CFG.magnetRadius * (REACH[o.kind] || 1);
-      if (o.t > 0.22 && o.reject <= 0 && d2 < reach * reach) {
+      if (o.t > 0.22 && o.reject <= 0 && !refused && d2 < reach * reach) {
         const d = Math.max(1, Math.sqrt(d2));
         const pull = CFG.magnetForce * (1 - d / reach) * dt;
         o.vx += dx / d * pull; o.vy += dy / d * pull;
@@ -66,17 +70,21 @@ export class Loot {
       }
       o.x = nx; o.y = ny;
 
-      if (d2 < CFG.pickupRadius * CFG.pickupRadius && o.t > 0.14 && o.reject <= 0) {
+      if (d2 < CFG.pickupRadius * CFG.pickupRadius && o.t > 0.14 && o.reject <= 0 && !refused) {
         if (ctx.collect(o)) { this.pool.push(o); this.list.splice(i, 1); }
         else {
           // Refused. Throw it clear of its OWN magnet reach — the push used to be far weaker
           // than the reach, so a rejected find trailed the player for the rest of the run,
           // bumping them every couple of seconds and re-firing the bag-full warning.
           const rr = CFG.magnetRadius * (REACH[o.kind] || 1);
-          const d = Math.max(1, Math.sqrt(d2));
+          // Mostly lateral: at the moment of refusal the item is inside the pickup radius, so
+          // dx is near zero and a dx-derived impulse was a pure vertical hop straight back down
+          // onto the player.
+          const side = Math.sign(dx) || (player.facing || 1);
+          o.refusedW = ctx.weight;
           o.reject = 2.4;
-          o.vx = -dx / d * rr * 1.6;
-          o.vy = -rr * 1.1;
+          o.vx = -side * rr * 1.4;
+          o.vy = -rr * 0.55;
           o.mag = 0;
         }
       }

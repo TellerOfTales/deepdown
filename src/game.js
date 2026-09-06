@@ -17,6 +17,7 @@ import { audio } from './core/audio.js';
 import { Rand, clamp, damp, hashf } from './core/rng.js';
 import { UPGRADES, upgradeCost } from './ui/screens.js';
 import * as SaveMod from './core/save.js';
+import { MAP } from './core/input.js';
 
 export const RULES = {
   flecks:    { title: 'GOLD FLECKS', rule: 'Flecks thicken toward the seam. Dig where they crowd.' },
@@ -73,8 +74,9 @@ export function newGame() {
     ui: { sel: 0, tab: 0, scroll: 0 },
     shaft: { open: false, choice: 1, near: null },
     flash: { color: '#ffffff', a: 0 },
-    vignette: 0, hitstop: 0, danger: 0, abandonHold: 0,
+    vignette: 0, hitstop: 0, danger: 0, abandonHold: 0, uiLock: 0,
     aim: null, deathCause: '', deathRecorded: false, lastRun: null,
+    runStart: { tiles: 0, strikes: 0, crits: 0 },
     sonar: { t: 0, x: 0, y: 0, r: 0 },
     rand: new Rand(1),
     cfg: CFG,
@@ -138,6 +140,9 @@ export function startRun(G, seed) {
   G.runT = 0; G.runMaxDepth = 0; G.runLearned = [];
   G.strataIdx = 0;
   G.stats.runs++;
+  // Snapshot the lifetime counters so the death screen can report THIS run. It was printing
+  // TILES 192 after a 22-tile run, on the screen whose whole job is to report what just happened.
+  G.runStart = { tiles: G.stats.tilesBroken | 0, strikes: G.stats.strikes | 0, crits: G.stats.crits | 0 };
   G.deathCause = '';
   G.deathRecorded = false;
   G.tutorialShown = {};
@@ -187,6 +192,7 @@ export function enterStratum(G, idx) {
   p.readyAt = G.t; p.combo = 0;
   G.cam.snapTo(p.x - VW / 2, p.y - p.h * 0.5 - VH / 2, world);
   G.shaft.open = false;
+  G.uiLock = 0.3;
   audio.ambient(idx);
 }
 
@@ -200,12 +206,17 @@ export function bankRun(G, reason) {
   G.lastRun = {
     depth: G.runMaxDepth, value: amount, items: Object.assign({}, G.haulItems),
     learned: G.runLearned.slice(), time: G.runT, extracted: true, reason,
+    tiles: (G.stats.tilesBroken | 0) - G.runStart.tiles,
+    strikes: (G.stats.strikes | 0) - G.runStart.strikes,
+    crits: (G.stats.crits | 0) - G.runStart.crits,
+    combo: G.player.bestCombo | 0,
     deep: G.runMaxDepth >= STRATA[STRATA.length - 1].top,
   };
   G.stats.bestCombo = Math.max(G.stats.bestCombo | 0, G.player.bestCombo | 0);
   audio.bank(amount);
   G.haul = 0; G.haulItems = {}; G.weight = 0; G.carried.length = 0;
   G.mode = 'depot';
+  G.uiLock = 0.3;
   // Land the cursor on something the player could not afford before this run. The Depot should
   // open on a new possibility, not on row one.
   G.ui.sel = 0;
@@ -225,6 +236,10 @@ export function die(G, cause) {
   G.lastRun = {
     depth: G.runMaxDepth, value: Math.round(G.haul), items: Object.assign({}, G.haulItems),
     learned: G.runLearned.slice(), time: G.runT, extracted: false, reason: cause,
+    tiles: (G.stats.tilesBroken | 0) - G.runStart.tiles,
+    strikes: (G.stats.strikes | 0) - G.runStart.strikes,
+    crits: (G.stats.crits | 0) - G.runStart.crits,
+    combo: G.player.bestCombo | 0,
   };
   G.stats.bestCombo = Math.max(G.stats.bestCombo | 0, G.player.bestCombo | 0);
   audio.die();
@@ -278,7 +293,9 @@ function cavitySize(world, tx, ty, cap, ptx, pty) {
     seen.add(k); n++;
     stack.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1);
   }
-  return n;
+  // Truncated means "I could not tell", not "enormous". Returning the cap made an unresolved
+  // space the loudest possible answer; silence is a far cheaper failure than a lie.
+  return stack.length ? 0 : n;
 }
 
 function addHaul(G, kind, value) {
@@ -399,7 +416,10 @@ export function resolveStrike(G, info) {
   if (info.second >= 0 && info.dy === 0) {
     const t2 = world.get(info.tx, info.second);
     hollow2 = TILES[t2].solid && world.get(bx, info.second) === T.AIR;
-    if (hollow2) seedCavity2 = cavitySize(world, bx, info.second, 240, ptx, pty);
+    // Only when the aimed row is NOT already a breakthrough. A swing that opens both rows onto
+    // the same chamber used to fire the discovery twice, and the second callout destroyed the
+    // first — on the one beat where the game states the rule it just taught you.
+    if (hollow2 && !hollow) seedCavity2 = cavitySize(world, bx, info.second, 240, ptx, pty);
   }
 
   const res = world.strike(info.tx, info.ty, info.power, info.damage, { crit: info.crit });
@@ -713,6 +733,9 @@ function playerCtx(G) {
 export function update(G, dt, input) {
   G.t += dt;
   G.dtLast = dt;
+  // A key held across a screen change must not act twice. Without this, ENTER on the title
+  // took you to the Depot and spent your bank on whatever the cursor was parked on.
+  if (G.uiLock > 0) G.uiLock -= dt;
 
   // Hitstop is near-freeze, not freeze. The world stops; the input queue does not. Swallowing a
   // press inside a 300ms discovery stop would be felt immediately in a game built on rhythm.
@@ -757,7 +780,7 @@ function updateTitle(G, dt, input) {
   if (input.pressed('confirm') || input.pressed('dig') || input.anyPressed) {
     audio.init(); audio.ui('confirm');
     if (G.stats.runs === 0) startRun(G);      // never open a shop before the verb
-    else { G.mode = 'depot'; G.ui.sel = 0; }
+    else { G.mode = 'depot'; G.ui.sel = 0; G.uiLock = 0.3; }
   }
 }
 
@@ -777,10 +800,11 @@ function updatePause(G, dt, input) {
 
 function updateDeath(G, dt, input) {
   if (input.pressed('restart') || input.pressed('dig')) { audio.ui('confirm'); startRun(G); }
-  else if (input.pressed('confirm')) { audio.ui('open'); G.mode = 'depot'; G.ui.sel = 0; }
+  else if (input.pressed('confirm')) { audio.ui('open'); G.mode = 'depot'; G.ui.sel = 0; G.uiLock = 0.3; }
 }
 
 function updateDepot(G, dt, input) {
+  if (G.uiLock > 0) return;
   const n = UPGRADES.length;
   if (input.pressed('up')) { G.ui.sel = (G.ui.sel + n - 1) % n; audio.ui('move'); }
   if (input.pressed('down')) { G.ui.sel = (G.ui.sel + 1) % n; audio.ui('move'); }
@@ -801,7 +825,7 @@ function updateDepot(G, dt, input) {
   // A pointer needs a target, not an alias. 'dig' and 'confirm' BOTH report a click and a touch
   // tap, so routing the Depot through them made every tap mean whichever branch came first.
   // Hit-test instead: the descend bar plays, an upgrade row selects and buys.
-  if (input.mpressed || input.touch._pdig) {
+  if (input.mpressed || input.touch._pdig || input.touch._ptap) {
     const mx = input.mx, my = input.my;
     if (my >= VH - 36 && my <= VH - 10) { audio.ui('confirm'); startRun(G); return; }
     const row = Math.floor((my - 42) / 13);
@@ -812,8 +836,8 @@ function updateDepot(G, dt, input) {
     return;
   }
   // Keyboard: SPACE/K descend, ENTER buys. Tested on the raw codes so a click cannot alias in.
-  if (input.pressedKey(['Space', 'KeyZ', 'KeyK', 'KeyX']) ) { audio.ui('confirm'); startRun(G); return; }
-  if (input.pressedKey(['Enter', 'NumpadEnter', 'KeyE'])) buy();
+  if (input.pressedKey(MAP.dig.concat(MAP.jump))) { audio.ui('confirm'); startRun(G); return; }
+  if (input.pressedKey(MAP.confirm)) buy();
 }
 
 function updateRun(G, dt, input) {
@@ -996,7 +1020,7 @@ function updateRun(G, dt, input) {
   const entPx = world.entryTX * TS + TS / 2, entPy = (world.entryTY + 1) * TS;
   if (Math.abs(p.x - entPx) < 34 && Math.abs(p.y - entPy) < 34) G.shaft.near = 'entry';
 
-  if (G.shaft.near && input.pressed('interact') && !p.dead) {
+  if (G.shaft.near && input.pressed('interact') && !p.dead && G.uiLock <= 0) {
     if (G.shaft.near === 'entry') {
       // Enter is the key that just started the run. Riding the lift up with nothing in the bag
       // is not a thing anyone means to do, and there is no prompt offering it.
@@ -1021,8 +1045,25 @@ function updateShaft(G, dt, input) {
   const last = STRATA.length - 1;
   if (input.pressed('up')) { G.shaft.choice = 0; audio.ui('move'); }
   if (input.pressed('down') && G.strataIdx < last) { G.shaft.choice = 1; audio.ui('move'); }
+  // Pointer: the two option panels drawn by hud.drawShaftPrompt. Tap to pick, tap again to
+  // commit — a touch player otherwise has no way to end a run at all.
+  if (input.mpressed || input.touch._ptap) {
+    const mx = input.mx, my = input.my;
+    const oy = 24 + 74;
+    if (my >= oy && my <= oy + 54) {
+      const pick = mx < VW / 2 ? 0 : 1;
+      if (pick === 1 && G.strataIdx >= last) { audio.ui('deny'); return; }
+      if (pick !== G.shaft.choice) { G.shaft.choice = pick; audio.ui('move'); return; }
+      confirmShaft(G);
+      return;
+    }
+  }
   if (input.pressed('cancel')) { G.mode = 'run'; G.shaft.open = false; audio.ui('close'); }
-  if (input.pressed('interact') || input.pressed('confirm')) {
+  if (input.pressed('interact') || input.pressed('confirm')) confirmShaft(G);
+}
+
+function confirmShaft(G) {
+  {
     G.shaft.open = false;
     if (G.shaft.choice === 0) {
       bankRun(G, 'took the lift');

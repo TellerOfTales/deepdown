@@ -2,7 +2,7 @@
 // Digging is 90% of the input in this game, so DIG gets the biggest, most comfortable buttons
 // on every device and jump is deliberately secondary.
 
-const MAP = {
+export const MAP = {
   left:    ['ArrowLeft', 'KeyA'],
   right:   ['ArrowRight', 'KeyD'],
   up:      ['ArrowUp', 'KeyW'],
@@ -35,6 +35,9 @@ export class Input {
     this.touch = { active: false, dx: 0, dy: 0, dig: false, jump: false, util: false, id: -1 };
     this.touchButtons = [];   // filled by the renderer so we can hit-test in virtual coords
     this.lastDevice = 'key';
+    // While a full-screen UI owns the frame, every touch is a pointer tap: the virtual stick
+    // and the DIG button are run-mode concepts and must not swallow taps meant for a menu.
+    this.uiPointer = false;
   }
 
   attach(canvas, toVirtual) {
@@ -85,6 +88,14 @@ export class Input {
 
   _touchDown(t) {
     const p = this._toVirtual(t.clientX, t.clientY);
+    this.mx = p.x; this.my = p.y;          // a tap is a pointer position, same as a click
+    this.lastDevice = 'touch';
+    if (this.uiPointer) {
+      this._touches.set(t.identifier, { tap: true });
+      this.touch._ptap = true;
+      this.anyPressed = true;
+      return;
+    }
     const btn = this._hitButton(p.x, p.y);
     if (btn) { this._touches.set(t.identifier, { btn: btn.id }); this.touch[btn.id] = true; this.touch['_p' + btn.id] = true; this.anyPressed = true; return; }
     if (p.x < 200) {
@@ -97,8 +108,10 @@ export class Input {
   }
   _touchMove(t) {
     const rec = this._touches.get(t.identifier);
+    const pm = this._toVirtual(t.clientX, t.clientY);
+    this.mx = pm.x; this.my = pm.y;
     if (!rec || !rec.stick) return;
-    const p = this._toVirtual(t.clientX, t.clientY);
+    const p = pm;
     const dx = p.x - rec.ox, dy = p.y - rec.oy;
     const dead = 5;
     this.touch.dx = Math.abs(dx) > dead ? Math.sign(dx) : 0;
@@ -111,10 +124,11 @@ export class Input {
     if (!rec) return;
     this._touches.delete(t.identifier);
     if (rec.stick) { this.touch.active = false; this.touch.dx = 0; this.touch.dy = 0; }
-    else this.touch[rec.btn] = false;
+    else if (rec.btn) this.touch[rec.btn] = false;
   }
   _hitButton(x, y) {
     for (const b of this.touchButtons) {
+      if (b.on === false) continue;   // a contextual button must not steal a DIG tap while it is hidden
       const dx = x - b.x, dy = y - b.y;
       if (dx * dx + dy * dy <= b.r * b.r) return b;
     }
@@ -145,7 +159,8 @@ export class Input {
     if (a === 'dig' && (this.mpressed || this.touch._pdig)) return true;
     if (a === 'jump' && this.touch._pjump) return true;
     if (a === 'util' && (this.rpressed || this.touch._putil)) return true;
-    if (a === 'confirm' && (this.mpressed || this.touch._pdig)) return true;
+    if (a === 'confirm' && (this.mpressed || this.touch._pdig || this.touch._ptap)) return true;
+    if (a === 'interact' && (this.mpressed || this.touch._ptap || this.touch._puse)) return true;
     return false;
   }
   released(a) {
@@ -161,5 +176,6 @@ export class Input {
     this.anyPressed = false;
     this.mouseMoved = 0;
     this.touch._pdig = false; this.touch._pjump = false; this.touch._putil = false;
+    this.touch._ptap = false; this.touch._puse = false;
   }
 }

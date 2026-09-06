@@ -75,7 +75,7 @@ window.addEventListener('keydown',mark);window.addEventListener('pointerdown',ma
 writeFileSync('dist/deeper.html',
 `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>DEEPER</title>${FONT}<style>${STYLE}</style></head><body>${BODY}</body></html>`);
+<title>DEEPER</title><link rel="icon" href="data:,">${FONT}<style>${STYLE}</style></head><body>${BODY}</body></html>`);
 
 writeFileSync('dist/artifact.html', `<title>DEEPER</title>\n${FONT}\n<style>${STYLE}</style>\n${BODY}`);
 
