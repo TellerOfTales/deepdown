@@ -359,7 +359,19 @@ export class Player {
     const [dx, dy] = this.digDir;
     const cxT = Math.floor(this.x / TS);
     if (dy > 0) {
-      a.tx = cxT; a.ty = Math.floor((this.y + 0.5) / TS); a.second = -1;
+      // The feet do not sit exactly on a tile boundary. Collision resolution stops a fraction
+      // of a pixel short, and inside a chimney there is no gravity to settle the miner onto the
+      // edge — so after breaking the first tile and dropping into it, floor((y + 0.5) / TS)
+      // named the tile the miner was standing IN, which is the air they had just made. Every
+      // downward strike after the first one then hit nothing, which is exactly what "I dug
+      // down and got stuck" looks like from the inside.
+      //
+      // So: aim at the floor, not at the arithmetic. If the tile under the feet is not
+      // something a pick can bite, step one row down to the one that is.
+      a.tx = cxT;
+      let ty = Math.floor((this.y + 0.5) / TS);
+      if (!TILES[world.get(cxT, ty)].diggable && TILES[world.get(cxT, ty + 1)].diggable) ty++;
+      a.ty = ty; a.second = -1;
     } else if (dy < 0) {
       // The tile ABOVE the collision box. floor((y - h) / TS) is the tile the head is inside,
       // which must be air for the player to be standing there at all — aiming at it meant
