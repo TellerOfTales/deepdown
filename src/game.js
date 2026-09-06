@@ -87,6 +87,10 @@ export function newGame() {
 
 // ── messages & callouts ───────────────────────────────────────────────────────
 export function msg(G, text, color) {
+  // A sideways swing resolves two tiles, so a shear or a chain can raise the same line twice in
+  // one frame. Refresh the existing line rather than stacking it.
+  const last = G.msgs[G.msgs.length - 1];
+  if (last && last.text === text && last.t < 0.9) { last.t = 0; return; }
   G.msgs.push({ text, color: color || '#d8d2c4', t: 0, life: 2.7 });
   if (G.msgs.length > 4) G.msgs.shift();
 }
