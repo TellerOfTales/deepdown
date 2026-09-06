@@ -26,6 +26,35 @@ no amount of loot tuning will fix it.
 Second most important: **depth at which the first hesitation happens**, recorded by hand. If it
 never happens, §9's push-your-luck structure is decorative.
 
+## What is machine-verified
+
+These run headlessly against the real build (`node tools/check.mjs --script <name>`), so a
+regression in any of them is caught without a human sitting down. None of them can tell you
+whether the game is *fun* — that is what the table above is for.
+
+| Script | What it proves |
+|---|---|
+| `play` | boots, digs, collects, no page errors, 60fps at 1080p |
+| `opening` | first 30 s: reaches ~30 m, confirms 2-4 rules, leaves nothing on the ground |
+| `clues` | each learnable rule fires in situ — flecks, hollow, shear, granite, mimic |
+| `vein` | breaking a `FLECK_RICH` face onto the seam it promised pays out and teaches |
+| `descend` | the whole arc: run → shaft → stratum II → shaft → stratum III |
+| `screens` | title, depot, journal, shaft decision, death — and death is recorded |
+
+Additionally verified by one-off harnesses during development: water floods a breached tunnel,
+unsupported gravel falls and stacks, glowcaps refill the lantern, the bag-full swap keeps
+`haul == Σ carried.value` and `weight == Σ carried.w` and never exceeds the cap and never trades
+down, climbing a chimney works, granite is answerable by three heavies or two crits, fall damage
+scales and does not bounce, the stoneback refuses its armoured face and clamps rather than going
+unboundedly negative, the crawler drops when you mine its anchor, the mimic stays buried until it
+wakes and pays out when killed, the burrower swims and chews a trackable tunnel, all 47 audio
+entry points fire without error, bank/stats/rules/archive/upgrades survive a reload, a corrupt
+save degrades to a clean slate, touch controls hit-test correctly at a fractional canvas scale,
+and no creature spawns within 14 m of the lift across 60 generated maps.
+
+Generation invariants, measured across 120 maps: hairline false-positive rate 0.6%, one map
+without a gem pocket, four without a relic, every vein turn exactly 45°.
+
 ## Known First Playable limits (deliberate, tracked to Gate 2)
 
 - Combat is contact-and-pick. Ceiling collapse, cut supports and released water exist as
