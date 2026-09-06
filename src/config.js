@@ -62,7 +62,7 @@ export const CFG = {
   maxHealth: 5,
   lightMax: 100,
   lightDrain: 0.78,        // per second
-  lanternRadius: 7.4,      // tiles
+  lanternRadius: 9.4,      // tiles
   carryMax: 1100,           // "grams" — treasure has weight, wealth is literally a burden
   toolMax: 100,
   toolWearTap: 0.10, toolWearHeavy: 0.42, toolWearHard: 0.55,

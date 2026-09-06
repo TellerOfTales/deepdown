@@ -41,7 +41,8 @@ export function spawn(type, x, y, threat) {
   };
   switch (type) {
     case 'burrower': e.state = 'swim'; break;
-    case 'crawler': e.state = 'cling'; e.anchorTY = Math.floor(y / TS); break;
+    // y arrives as the BOTTOM of the anchor tile, so floor() lands one row below it.
+    case 'crawler': e.state = 'cling'; e.anchorTY = Math.floor(y / TS) - 1; break;
     case 'stoneback': e.state = 'walk'; e.facing = (e.seed & 1) ? 1 : -1; break;
     case 'glowmoth': e.state = 'fly'; break;
     case 'mimic': e.state = 'dormant'; break;

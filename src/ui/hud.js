@@ -54,9 +54,19 @@ function bar(g, x, y, w, h, frac, col, bg) {
 }
 
 /** Gold reads as "G1,240" — a currency glyph would cost a character everyone has to learn. */
+export { moneyBig };
+
 export function money(n) {
   const s = Math.round(n).toString();
   return 'G' + s.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+/** The currency mark set dim and small next to a bright figure, so 'G0' cannot read as 'GO'. */
+function moneyBig(g, n, x, y, scale, color, alpha) {
+  const fig = Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const fw = measure(fig, scale);
+  text(g, fig, x, y, { color, align: 'right', scale, shadow: true, alpha });
+  text(g, 'G', x - fw - 3, y + (scale - 1) * 3, { color: P.UI_DIM, align: 'right', alpha });
+  return fw + 9;
 }
 
 function riskColor(frac) {
@@ -118,7 +128,7 @@ export function drawHUD(g, G, dt) {
   // player feels the stake rising without the layout twitching.
   const beat = frac > 0.5 ? 0.78 + Math.abs(Math.sin(H.t * (1.6 + frac * 2.6))) * 0.22 * frac : 1;
   text(g, 'AT RISK', VW - 6, VH - 34, { color: P.UI_DIM, align: 'right' });
-  text(g, money(G.haul), VW - 6, VH - 27, { color: col, align: 'right', scale: 2, shadow: true, alpha: beat });
+  moneyBig(g, G.haul, VW - 6, VH - 27, 2, col, beat);
   const wfrac = G.weight / p.carryMax;
   const full = wfrac >= 0.999;
   const shake = full ? Math.round(Math.sin(H.t * 30) * 1) : 0;
@@ -135,8 +145,8 @@ export function drawHUD(g, G, dt) {
     bar(g, cxp - 20, cyp + FONT_H * sc + 2, 40, 3, decay, cc, 'rgba(0,0,0,0.45)');
     if (p.perfectOpen) {
       g.strokeStyle = P.UI_WHITE; g.lineWidth = 1;
-      const w = 46, h = FONT_H * sc + 10;
-      g.strokeRect(cxp - w / 2 + 0.5, cyp - 4 + 0.5, w, h);
+      const w = measure('x' + p.combo, sc) + 12, h = FONT_H * sc + 10;
+      g.strokeRect(Math.round(cxp - w / 2) + 0.5, cyp - 4 + 0.5, w, h);
     }
   } else if (p.perfectOpen && !p.dead) {
     // Before the first combo exists, the beat still needs a home on screen.
@@ -179,11 +189,15 @@ function darkEdges(g, amt) {
 
 function drawMessages(g, G) {
   const list = G.msgs;
-  for (let i = 0; i < list.length; i++) {
-    const m = list[i];
+  // A discovery banner owns the screen while it is up; transient lines duck under it.
+  const duck = G.mode === 'shaft' ? 0 : G.callout ? 0.35 : 1;
+  const shown = list.slice(-3);
+  for (let i = 0; i < shown.length; i++) {
+    const m = shown[i];
     const age = m.t / m.life;
-    const a = age < 0.08 ? age / 0.08 : age > 0.8 ? (1 - age) / 0.2 : 1;
-    const y = VH - 66 - (list.length - 1 - i) * 10 - (1 - Math.min(1, m.t * 6)) * -4;
+    const a = (age < 0.08 ? age / 0.08 : age > 0.8 ? (1 - age) / 0.2 : 1) * duck;
+    const rise = (1 - Math.min(1, m.t * 7)) * 5;
+    const y = VH - 72 - (shown.length - 1 - i) * 10 + rise;
     text(g, m.text, VW / 2, Math.round(y), { color: m.color, align: 'center', alpha: clamp(a, 0, 1), shadow: true });
   }
 }
@@ -237,7 +251,8 @@ export function drawShaftPrompt(g, G) {
   panel(g, x, y, w, h, 0.94);
 
   text(g, 'THE SHAFT', VW / 2, y + 8, { color: P.UI_DIM, align: 'center' });
-  text(g, money(G.haul), VW / 2, y + 18, { color: riskColor(clamp(G.haul / (900 * STRATA[Math.min(last, G.strataIdx + 1)].valueMul), 0, 1)), align: 'center', scale: 3, shadow: true });
+  moneyBig(g, G.haul, VW / 2 + measure(String(Math.round(G.haul)), 3) / 2, y + 18, 3,
+    riskColor(clamp(G.haul / (900 * STRATA[Math.min(last, G.strataIdx + 1)].valueMul), 0, 1)), 1);
   text(g, 'IN THE BAG', VW / 2, y + 40, { color: P.UI_DIM, align: 'center' });
 
   // itemised haul

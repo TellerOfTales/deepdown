@@ -57,18 +57,23 @@ if (script === 'play') {
   await page.waitForTimeout(700);
   await shot('03-run-start');
 
-  // dig around: alternate direction + rhythm taps
-  for (let i = 0; i < 44; i++) {
-    await page.keyboard.down('ArrowDown');
+  // Play in rhythm: press one beat after the pick is ready, which is what a competent player does.
+  const BEAT = 262;
+  let held = null;
+  const hold = async (k) => { if (held !== k) { if (held) await page.keyboard.up(held); held = k; if (k) await page.keyboard.down(k); } };
+  const beats = parseInt(args.beats || '150', 10);
+  for (let i = 0; i < beats; i++) {
+    // sink a shaft first, then alternate between tunnelling sideways and going deeper
+    const dir = i < 26 ? 'ArrowDown'
+      : (Math.floor(i / 14) % 3 === 2 ? 'ArrowDown' : (Math.floor(i / 42) % 2 ? 'ArrowLeft' : 'ArrowRight'));
+    await hold(dir);
     await page.keyboard.press('Space');
-    await page.waitForTimeout(130);
-    await page.keyboard.press('Space');
-    await page.waitForTimeout(140);
-    await page.keyboard.up('ArrowDown');
-    if (i % 6 === 5) { await page.keyboard.down('ArrowRight'); await page.waitForTimeout(200); await page.keyboard.press('Space'); await page.waitForTimeout(180); await page.keyboard.up('ArrowRight'); }
-    if (i === 12) await shot('04-digging');
-    if (i === 30) await shot('05-deep');
+    await page.waitForTimeout(BEAT);
+    if (i === 20) await shot('04-digging');
+    if (i === 80) await shot('05-deep');
+    if (i === 120) await shot('05b-deeper');
   }
+  await hold(null);
   await page.waitForTimeout(400);
   await shot('06-after');
   const state = await page.evaluate(() => {
@@ -78,12 +83,43 @@ if (script === 'play') {
       mode: G.mode, depth: G.depth, haul: Math.round(G.haul), hp: G.player.hp,
       light: Math.round(G.player.light), tiles: G.stats.tilesBroken, strikes: G.stats.strikes,
       crits: G.stats.crits, combo: G.player.bestCombo, enemies: G.enemies.length,
+      onBeatPct: G.stats.strikes ? Math.round(G.stats.crits / G.stats.strikes * 100) : 0,
+      weight: Math.round(G.weight), carryMax: G.player.carryMax, msgs: G.msgs.map(m => m.text),
       loot: G.loot.list.length, fx: G.fx.count ? G.fx.count() : -1,
       px: Math.round(G.player.x), py: Math.round(G.player.y),
       learned: Array.from(G.discoveries),
     };
   });
   console.log('STATE', JSON.stringify(state, null, 1));
+} else if (script === 'screens') {
+  // Walk every full-screen state and the shaft decision, driving state directly through window.G
+  await page.keyboard.press('Enter');  await page.waitForTimeout(300);
+  await page.evaluate(() => { window.G.bank = 8400; window.G.stats.runs = 7; window.G.stats.deepest = 148; window.G.stats.banked = 41200; });
+  await page.waitForTimeout(200); await shot('s1-depot');
+  await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowDown'); await page.waitForTimeout(200);
+  await shot('s2-depot-sel');
+  await page.keyboard.press('Tab'); await page.waitForTimeout(250); await shot('s3-journal');
+  await page.keyboard.press('Tab'); await page.waitForTimeout(200);
+  await page.keyboard.press('Space'); await page.waitForTimeout(600);
+  // teleport onto the shaft and open the decision
+  await page.evaluate(() => {
+    const G = window.G;
+    G.haul = 2480; G.weight = 640;
+    G.haulItems = { nugget: 14, gem: 3, shard: 9, relic: 1 };
+    G.player.x = G.world.shaftTX * 16 + 8;
+    G.player.y = (G.world.shaftTY + 1) * 16;
+    G.player.vx = 0; G.player.vy = 0;
+    G.cam.snapTo(G.player.x - 240, G.player.y - 135, G.world);
+  });
+  await page.waitForTimeout(400); await shot('s4-at-shaft');
+  await page.keyboard.press('KeyE'); await page.waitForTimeout(400); await shot('s5-shaft-prompt');
+  await page.keyboard.press('ArrowUp'); await page.waitForTimeout(250); await shot('s6-shaft-extract');
+  await page.keyboard.press('Backspace'); await page.waitForTimeout(250);
+  await page.evaluate(() => { window.G.runLearned = ['Flecks thicken toward the seam. Dig where they crowd.','A hairline in the face means open space behind it.','RECOVERED: HAND BELL']; window.G.player.hurt(9, 0, 0, null, 'a crawler'); window.G.deathCause = 'a crawler you never looked up at'; });
+  await page.waitForTimeout(1800); await shot('s7-death');
+  await page.waitForTimeout(300);
+  const st = await page.evaluate(() => ({ mode: window.G.mode, hp: window.G.player.hp, dead: window.G.player.dead, deadT: window.G.player.deadT, rec: window.G.deathRecorded, lastRun: !!window.G.lastRun }));
+  console.log('SCREENS', JSON.stringify(st));
 } else {
   const frames = parseInt(args.frames || '20', 10);
   await page.waitForTimeout(frames * 40);

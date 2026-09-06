@@ -71,7 +71,7 @@ export function newGame() {
     shaft: { open: false, choice: 1, near: null },
     flash: { color: '#ffffff', a: 0 },
     vignette: 0, hitstop: 0, danger: 0,
-    aim: null, deathCause: '', lastRun: null,
+    aim: null, deathCause: '', deathRecorded: false, lastRun: null,
     sonar: { t: 0, x: 0, y: 0, r: 0 },
     rand: new Rand(1),
     cfg: CFG,
@@ -131,6 +131,7 @@ export function startRun(G, seed) {
   G.strataIdx = 0;
   G.stats.runs++;
   G.deathCause = '';
+  G.deathRecorded = false;
   G.tutorialShown = {};
   const p = G.player;
   p.reset(0, 0);
@@ -219,13 +220,19 @@ export function isGone(e) {
             (e.dead && (e.deathT === undefined ? true : e.deathT > 0.55)));
 }
 
+/**
+ * Flood the opened space to decide whether we made a hole or a room.
+ * Returns 0 if the space reaches daylight or the map edge — breaking through to the sky is not
+ * a discovery, and rewarding it would teach exactly the wrong lesson.
+ */
 function cavitySize(world, tx, ty, cap) {
-  // Flood fill open space to decide whether we just made a hole or opened a room.
   const seen = new Set();
   const stack = [tx, ty];
   let n = 0;
   while (stack.length && n < cap) {
     const y = stack.pop(), x = stack.pop();
+    if (x < 1 || y < 0 || x >= world.w - 1 || y >= world.h - 1) continue;
+    if (y <= 3) return 0;
     const k = y * world.w + x;
     if (seen.has(k)) continue;
     if (world.get(x, y) !== T.AIR) continue;
@@ -471,10 +478,10 @@ function handleBreaks(G, broken, info, hollow) {
       fxDiscovery(fx, info.tx * TS + TS / 2, info.ty * TS + TS / 2, predicted ? '#ffd867' : '#7fd0f0');
       G.hitstop = Math.max(G.hitstop, CFG.hitstopDiscovery);
       G.cam.addShake(4.2);
-      G.flash.color = '#d5fff6'; G.flash.a = predicted ? 0.5 : 0.3;
+      G.flash.color = '#d5fff6'; G.flash.a = predicted ? 0.42 : 0.24;
       audio.duck(1.4, 0.35);
-      if (predicted) { learn(G, 'hollow'); callout(G, 'YOU CALLED IT', 'HIDDEN CHAMBER - ' + size + ' M3', '#ffd867', 3); }
-      else callout(G, 'HIDDEN CHAMBER', size + ' M3 OF NOTHING AT ALL', '#7fd0f0', 2);
+      if (predicted) { learn(G, 'hollow'); callout(G, 'YOU CALLED IT', 'A CHAMBER, EXACTLY WHERE THE CRACK SAID', '#ffd867', 3); }
+      else callout(G, 'HIDDEN CHAMBER', size >= 200 ? 'IT KEEPS GOING' : size + ' CUBIC METRES OF NOTHING', '#7fd0f0', 2);
     } else if (size >= 6 && hollow) {
       fxHollowPuff(fx, info.tx * TS + TS / 2, info.ty * TS + TS / 2, info.dx, info.dy);
       if (seedDeco === D.HAIRLINE) learn(G, 'hollow');
@@ -603,7 +610,7 @@ function playerCtx(G) {
       G.cam.addShake(CFG.shakeDamage);
       G.hitstop = Math.max(G.hitstop, 0.10);
       G.fx.burst(G.player.x, G.player.cy, { color: '#a44a63', n: 10, speed: [40, 150], life: [0.25, 0.6], gravity: 320, size: [1, 2] });
-      if (G.player.dead) die(G, cause);
+      G.deathCause = cause || G.deathCause;
     },
   };
 }
@@ -632,7 +639,7 @@ export function update(G, dt, input) {
 }
 
 function updateCosmetic(G, dt) {
-  G.flash.a = Math.max(0, G.flash.a - dt * 3.4);
+  G.flash.a = Math.max(0, G.flash.a - dt * 9);
   for (let i = G.msgs.length - 1; i >= 0; i--) {
     G.msgs[i].t += dt;
     if (G.msgs[i].t > G.msgs[i].life) G.msgs.splice(i, 1);
@@ -726,6 +733,7 @@ function updateRun(G, dt, input) {
   const pctx = playerCtx(G);
   if (!p.dead) p.update(dt, input, world, pctx);
   else {
+    if (!G.deathRecorded) { G.deathRecorded = true; die(G, G.deathCause); }
     p.update(dt, input, world, pctx);
     if (p.deadT > 1.1) { G.mode = 'death'; return; }
   }
@@ -801,7 +809,7 @@ function updateRun(G, dt, input) {
   const margin = 6;
   const x0 = Math.floor(G.cam.ix / TS) - margin, y0 = Math.floor(G.cam.iy / TS) - margin;
   const x1 = Math.floor((G.cam.ix + VW) / TS) + margin, y1 = Math.floor((G.cam.iy + VH) / TS) + margin;
-  const amb = G.strataIdx === 0 ? world.stratum.ambient * clamp(1 - pty / 14, 0, 1) : world.stratum.ambient;
+  const amb = G.strataIdx === 0 ? world.stratum.ambient * clamp(1 - pty / 9, 0, 1) : world.stratum.ambient;
   G.lf.compute(x0, y0, x1, y1, sources, amb);
 
   // danger + tension
@@ -819,11 +827,12 @@ function updateRun(G, dt, input) {
   G.cam.follow(p, dt, world);
 
   // proximity to the shaft / elevator
+  // Generous: the rig is a place, not a pixel. Standing anywhere on the platform counts.
   G.shaft.near = null;
   const shaftPx = world.shaftTX * TS + TS / 2, shaftPy = (world.shaftTY + 1) * TS;
-  if (Math.abs(p.x - shaftPx) < 22 && Math.abs(p.y - shaftPy) < 26) G.shaft.near = 'shaft';
+  if (Math.abs(p.x - shaftPx) < 34 && Math.abs(p.y - shaftPy) < 34) G.shaft.near = 'shaft';
   const entPx = world.entryTX * TS + TS / 2, entPy = (world.entryTY + 1) * TS;
-  if (Math.abs(p.x - entPx) < 22 && Math.abs(p.y - entPy) < 26) G.shaft.near = 'entry';
+  if (Math.abs(p.x - entPx) < 34 && Math.abs(p.y - entPy) < 34) G.shaft.near = 'entry';
 
   if (G.shaft.near && input.pressed('interact') && !p.dead) {
     if (G.shaft.near === 'entry') {

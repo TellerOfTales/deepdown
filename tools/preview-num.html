@@ -1,0 +1,12 @@
+<!doctype html><html><head><meta charset="utf-8"></head><body><canvas id="c" width="300" height="90"></canvas>
+<script type="module">
+import * as F from '../src/art/font.js';
+const g=document.getElementById('c').getContext('2d');
+g.fillStyle='#000';g.fillRect(0,0,300,90);
+F.text(g,'139',10,10,{color:'#fff',scale:2});
+F.text(g,'0',10,30,{color:'#fff',scale:2});
+F.text(g,'139',150,10,{color:'#fff',scale:2,align:'right'});
+F.text(g,'1,240',10,50,{color:'#fff',scale:2,alpha:1});
+F.text(g,'G',10,70,{color:'#888',align:'right'});
+console.log('m139', F.measure('139',2), 'm0', F.measure('0',2), 'm0s1', F.measure('0',1));
+</script></body></html>

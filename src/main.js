@@ -67,7 +67,7 @@ function drawTouchUI() {
   g.restore();
 }
 
-function drawRun() {
+function drawRun(withHud) {
   drawParallax(g, G);
   drawTiles(g, G);
   drawProps(g, G);
@@ -84,6 +84,7 @@ function drawRun() {
   drawVeinArrows(g, G);
   drawVignette(g, G);
   drawFlash(g, G);
+  if (withHud === false) return;          // death and pause own the screen
   drawHUD(g, G, G.dtLast);
   if (G.mode === 'shaft') drawShaftPrompt(g, G);
   else if (G.shaft.near) drawInteractHint();
@@ -91,7 +92,8 @@ function drawRun() {
 }
 
 function drawInteractHint() {
-  const y = 200;
+  if (G.callout) return;
+  const y = 176;
   const label = G.shaft.near === 'entry' ? 'E  EXTRACT - BANK YOUR HAUL' : 'E  THE SHAFT';
   const pulse = 0.65 + Math.sin(G.t * 5) * 0.35;
   g.save(); g.globalAlpha = pulse;
@@ -146,9 +148,9 @@ function frame(now) {
     case 'title': drawTitle(g, G, dt); break;
     case 'depot': drawDepot(g, G, dt); break;
     case 'journal': drawJournal(g, G, dt); break;
-    case 'death': drawRun(); drawDeath(g, G, dt); break;
-    case 'pause': drawRun(); drawPause(g, G, dt); break;
-    default: drawRun(); break;
+    case 'death': drawRun(false); drawDeath(g, G, dt); break;
+    case 'pause': drawRun(false); drawPause(g, G, dt); break;
+    default: drawRun(true); break;
   }
 }
 

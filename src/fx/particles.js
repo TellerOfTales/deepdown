@@ -414,7 +414,7 @@ export function fxValue(fx, x, y, amount, color) {
 export function fxDiscovery(fx, x, y, color) {
   fx.ring(x, y, color, { r: 34, life: 0.55, thick: 2 });
   fx.ring(x, y, P.UI_WHITE, { r: 20, life: 0.34 });
-  fx.ring(x, y, color, { r: 62, life: 0.85, fade: 0.8 });
+  fx.ring(x, y, color, { r: 62, life: 0.85, fade: 0.45 });
   for (let i = 0; i < 7; i++) fx.glint(x + (rnd() - 0.5) * 54, y + (rnd() - 0.5) * 40, color);
   fx.dust(x, y, P.ROCK3, 16);
   fx.sparks(x, y, color, 16, 0, 0);

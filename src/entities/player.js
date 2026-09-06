@@ -372,7 +372,9 @@ export class Player {
     this.digAnim = dy > 0 ? ANIM.DIG_DOWN : dy < 0 ? ANIM.DIG_UP : ANIM.DIG_SIDE;
     this.charging = false;
 
-    if (crit) {
+    // A combo is built against material, not against air — otherwise a player could hold x40
+    // by swinging at nothing, and the number would stop meaning anything.
+    if (crit && a.valid) {
       this.combo = Math.min(CFG.comboMax, this.combo + 1);
       this.bestCombo = Math.max(this.bestCombo, this.combo);
     }

@@ -12,7 +12,7 @@ import { P } from '../art/pal.js';
 import { VW, VH } from '../config.js';
 import { STRATA } from '../world/tiles.js';
 import { clamp, hashf } from '../core/rng.js';
-import { money } from './hud.js';
+import { money, moneyBig } from './hud.js';
 
 export const UPGRADES = [
   { id: 'pick',      name: 'REINFORCED PICK',   desc: 'Break granite and masonry with a normal strike.', icon: 'ICON_PICK',   max: 2, cost: 420,  step: 2.4 },
@@ -126,7 +126,7 @@ export function drawDepot(g, G, dt) {
   text(g, 'BANKED', 12 + measure(money(G.bank), 3) + 6, 30, { color: P.UI_DARK });
 
   // ── upgrades ──────────────────────────────────────────────────────────────
-  const lx = 10, ly = 44, lw = 268, rowH = 15;
+  const lx = 10, ly = 44, lw = 268, rowH = 13;
   const sel = clamp(G.ui.sel, 0, UPGRADES.length - 1);
   const view = 12;
   const first = clamp(sel - 5, 0, Math.max(0, UPGRADES.length - view));
@@ -161,7 +161,17 @@ export function drawDepot(g, G, dt) {
     }
     text(g, maxed ? 'MAX' : money(cost), lx + lw - 4, y + 2,
       { color: maxed ? P.UI_GOOD : afford ? P.UI_GOLD : P.UI_DARK, align: 'right' });
-    if (on) text(g, u.desc, lx + 17, y + 9, { color: P.UI_DIM });
+  }
+  // The description of the highlighted row lives on its own line under the list, so a long
+  // sentence can never collide with the row beneath it.
+  const cur = UPGRADES[sel];
+  if (cur) {
+    const curLvl = G.upgrades[cur.id] | 0;
+    g.fillStyle = P.UI_DARK;
+    g.fillRect(lx, ly + Math.min(view, UPGRADES.length) * rowH + 2, lw, 1);
+    text(g, cur.desc, lx + 2, ly + Math.min(view, UPGRADES.length) * rowH + 7, { color: P.UI_COOL });
+    text(g, curLvl >= cur.max ? 'FULLY FITTED' : 'LEVEL ' + curLvl + ' OF ' + cur.max,
+      lx + lw - 2, ly + Math.min(view, UPGRADES.length) * rowH + 7, { color: P.UI_DARK, align: 'right' });
   }
 
   // ── right column ──────────────────────────────────────────────────────────
@@ -196,7 +206,7 @@ export function drawDepot(g, G, dt) {
   text(g, 'TAB  FIELD JOURNAL', rx + 6, 199, { color: P.UI_DARK });
 
   // ── the button that matters ───────────────────────────────────────────────
-  const by = VH - 30, bh = 22;
+  const by = VH - 32, bh = 22;
   const pulse = 0.62 + Math.sin(S.t * 3.2) * 0.38;
   g.save();
   g.globalAlpha = 0.25 + pulse * 0.35;
@@ -204,7 +214,7 @@ export function drawDepot(g, G, dt) {
   g.restore();
   g.strokeStyle = P.UI_GOLD; g.strokeRect(10.5, by + 0.5, VW - 21, bh - 1);
   text(g, 'SPACE   DESCEND', VW / 2, by + 7, { color: P.GOLD5, align: 'center', scale: 2, shadow: true });
-  text(g, 'UP/DOWN SELECT    ENTER BUY', VW / 2, VH - 6, { color: P.UI_DARK, align: 'center' });
+  text(g, 'UP/DOWN SELECT    ENTER BUY', VW / 2, VH - 8, { color: P.UI_DARK, align: 'center' });
 }
 
 function shaftBackdropSoft(g) {
@@ -248,7 +258,7 @@ export function drawDeath(g, G, dt) {
   const ly = 150;
   text(g, 'LOST', 30, ly, { color: P.UI_DANGER });
   g.fillStyle = P.UI_DARK; g.fillRect(30, ly + 9, VW - 60, 1);
-  text(g, money(lr.value), 30, ly + 15, { color: P.UI_DANGER, scale: 2, shadow: true });
+  moneyBig(g, lr.value, 30 + measure(String(Math.round(lr.value)), 2) + 10, ly + 15, 2, P.UI_DANGER, 1);
   let ix = 30 + measure(money(lr.value), 2) + 14;
   for (const k of ['nugget', 'gem', 'shard', 'bone', 'relic']) {
     const n = lr.items[k] | 0;

@@ -15,10 +15,10 @@ import { clamp } from '../core/rng.js';
 const ATT = new Float32Array(64);
 for (let i = 0; i < TILES.length; i++) {
   const t = TILES[i];
-  ATT[i] = t.solid ? (i === T.BEDROCK ? 7.0 : 3.1 + t.opacity * 2.2)
-                   : (t.liquid ? 1.35 : 1.0);
+  ATT[i] = t.solid ? (i === T.BEDROCK ? 3.6 : 1.30 + t.opacity * 1.15)
+                   : (t.liquid ? 1.15 : 1.0);
 }
-ATT[T.CRYSTAL] = 1.5; ATT[T.GLOWCAP] = 1.2; ATT[T.ROOT] = 1.5; ATT[T.ORE_GEM] = 2.0;
+ATT[T.CRYSTAL] = 1.05; ATT[T.GLOWCAP] = 1.0; ATT[T.ROOT] = 1.1; ATT[T.ORE_GEM] = 1.3;
 
 const REF = 8.0;   // reach that reads as "fully lit"
 
@@ -108,7 +108,7 @@ export class LightField {
     for (let y = 0; y < h; y++) {
       const wrow = (y + y0) * ww, brow = y * w;
       for (let x = 0; x < w; x++) {
-        if (buf[brow + x] > 1.2) {
+        if (buf[brow + x] > 1.6) {
           const i = wrow + x + x0;
           if (seen[i] < 255) seen[i] = 255;
         }

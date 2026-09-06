@@ -190,15 +190,18 @@ export function drawLighting(g, G) {
   if (lw <= 0 || lh <= 0) return;
   ensureLight(lw, lh);
   const data = lightImg.data;
-  const [tr, tg, tb] = hexRGB(world.stratum.tint);
+  const [str, stg, stb] = hexRGB(world.stratum.tint);
+  // Push the veil most of the way to black. The stratum's colour survives only as a whisper,
+  // which is what keeps an unlit chamber genuinely unknown instead of merely dim.
+  const tr = (str * 0.34) | 0, tg = (stg * 0.34) | 0, tb = (stb * 0.34) | 0;
   const seen = world.seen, ww = world.w;
   let i = 0;
   for (let y = 0; y < lh; y++) {
     const wrow = (y + lf.y0) * ww;
     for (let x = 0; x < lw; x++) {
       let b = clamp(lf.buf[y * lw + x] / 8, 0, 1);
-      b = Math.pow(b, 0.8);
-      if (seen[wrow + x + lf.x0]) b = Math.max(b, 0.075);
+      b = Math.pow(b, 1.15);
+      if (seen[wrow + x + lf.x0]) b = Math.max(b, 0.115);
       const a = 1 - b;
       data[i] = tr; data[i + 1] = tg; data[i + 2] = tb;
       data[i + 3] = (a * 252) | 0;
@@ -274,7 +277,8 @@ export function drawVignette(g, G) {
 export function drawFlash(g, G) {
   if (G.flash.a <= 0.01) return;
   g.save();
-  g.globalAlpha = clamp(G.flash.a, 0, 1);
+  g.globalCompositeOperation = 'lighter';
+  g.globalAlpha = clamp(G.flash.a, 0, 1) * 0.6;
   g.fillStyle = G.flash.color;
   g.fillRect(0, 0, VW, VH);
   g.restore();

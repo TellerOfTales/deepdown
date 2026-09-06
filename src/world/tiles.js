@@ -130,19 +130,19 @@ export const D = {
 export const STRATA = [
   {
     id: 0, name: 'TOPSOIL', roman: 'I', top: 0, height: 48, w: 100,
-    tint: '#2a1d16', ambient: 0.26, valueMul: 1.0, threat: 0.55,
+    tint: '#2a1d16', ambient: 0.17, valueMul: 1.0, threat: 0.55,
     tagline: 'Loose ground. Old prospects. Nothing here has teeth yet.',
     music: 'calm',
   },
   {
     id: 1, name: 'SLATE BEDS', roman: 'II', top: 48, height: 60, w: 108,
-    tint: '#161e2a', ambient: 0.13, valueMul: 1.95, threat: 1.0,
+    tint: '#161e2a', ambient: 0.055, valueMul: 1.95, threat: 1.0,
     tagline: 'The rock lies in sheets. It breaks the way it was laid down.',
     music: 'tense',
   },
   {
     id: 2, name: 'EMBERDEEP', roman: 'III', top: 108, height: 82, w: 116,
-    tint: '#2a1410', ambient: 0.07, valueMul: 3.4, threat: 1.7,
+    tint: '#2a1410', ambient: 0.035, valueMul: 3.4, threat: 1.7,
     tagline: 'Heat in the stone. Something down here was built, and then abandoned.',
     music: 'dread',
   },
