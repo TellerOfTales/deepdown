@@ -50,7 +50,7 @@ export class Player {
     this.digDir = [1, 0];
     this.charge = 0; this.charging = false; this.chargeReady = false;
     this.digHeldT = 0;
-    this.lastStrikeX = 0; this.lastStrikeY = 0;
+    this.lastStrikeX = 0; this.lastStrikeY = 0; this.lastStrikeT = 0;
     this.aim = { tx: 0, ty: 0, tile: 0, valid: false, second: -1 };
     this.recoilX = 0; this.recoilY = 0;
 
@@ -129,6 +129,7 @@ export class Player {
     this.hurtT = Math.max(0, this.hurtT - dt);
     this.landT = Math.max(0, this.landT - dt);
     this.pickupStreakT = Math.max(0, this.pickupStreakT - dt);
+    this.lastStrikeT = Math.max(0, this.lastStrikeT - dt);
     if (this.pickupStreakT <= 0) this.pickupStreak = 0;
     this.recoilX = damp(this.recoilX, 0, 16, dt);
     this.recoilY = damp(this.recoilY, 0, 16, dt);
@@ -392,8 +393,10 @@ export class Player {
     this.tool = Math.max(0, this.tool - (heavy ? CFG.toolWearHeavy : CFG.toolWearTap));
     if (this.tool <= 0) damage *= 0.55;   // a blunt pick still works, it just stops being fun
 
+    // Burrowers home in on this, not on the player. Digging is loud.
     this.lastStrikeX = a.tx * TS + TS / 2;
     this.lastStrikeY = a.ty * TS + TS / 2;
+    this.lastStrikeT = 3.0;
 
     if (ctx.onStrike) {
       ctx.onStrike({

@@ -77,6 +77,7 @@ export function newGame() {
     cfg: CFG,
     tutorialShown: {},
     bagWarned: 0,
+    ruleTable: RULES,
     slowmo: 0,
   };
   audio.setMuted(s.muted);
