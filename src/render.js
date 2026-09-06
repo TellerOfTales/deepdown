@@ -7,7 +7,7 @@
 // Lighting is applied AFTER everything in the world so a nugget lying in the dark is dark, and the
 // moment your lantern reaches it, it is not.
 
-import { VW, VH, TS } from './config.js';
+import { VIEW, TS } from './config.js';
 import { T, TILES, D } from './world/tiles.js';
 import { getAtlas } from './art/tiletex.js';
 import { drawSprite, frameAt, makeCanvas } from './art/spritesheet.js';
@@ -27,15 +27,20 @@ const ANIM_SPRITE = {
 };
 
 // Allocated ONCE at the largest window the camera can ever ask for. The light window's tile
-// height alternates between 16 and 17 as the camera moves (VH is not a multiple of TS), so
+// height alternates between 16 and 17 as the camera moves (the view is not a multiple of TS), so
 // sizing the canvas to the window meant a createElement + createImageData inside the render
 // path dozens of times a second — GC pressure during exactly the frames a rhythm game must
 // not stutter on.
-const LMAXW = Math.ceil(VW / TS) + 20, LMAXH = Math.ceil(VH / TS) + 20;
+// The viewport is no longer a constant, so the buffer is sized on the first frame after a
+// resize and then left alone. It only ever grows, so rotating a phone back and forth does not
+// churn it.
+let LMAXW = 0, LMAXH = 0;
 let lightCanvas = null, lightCtx = null, lightImg = null;
 
 function ensureLight() {
-  if (lightCanvas) return;
+  const w = Math.ceil(VIEW.w / TS) + 20, h = Math.ceil(VIEW.h / TS) + 20;
+  if (lightCanvas && w <= LMAXW && h <= LMAXH) return;
+  LMAXW = Math.max(LMAXW, w); LMAXH = Math.max(LMAXH, h);
   lightCanvas = makeCanvas(LMAXW, LMAXH);
   lightCtx = lightCanvas.getContext('2d');
   lightImg = lightCtx.createImageData(LMAXW, LMAXH);
@@ -45,7 +50,7 @@ function ensureLight() {
 function drawParallax(g, G) {
   const s = G.world.stratum;
   g.fillStyle = s.tint;
-  g.fillRect(0, 0, VW, VH);
+  g.fillRect(VIEW.x, VIEW.y, VIEW.w, VIEW.h);
   const cx = G.cam.ix * 0.35, cy = G.cam.iy * 0.35;
   g.fillStyle = P.VOID;
   const step = 48;
@@ -70,8 +75,8 @@ export function drawTiles(g, G) {
   if (!atlas) return;
   const x0 = Math.max(0, Math.floor(camX / TS) - 1);
   const y0 = Math.max(0, Math.floor(camY / TS) - 1);
-  const x1 = Math.min(world.w - 1, Math.floor((camX + VW) / TS) + 1);
-  const y1 = Math.min(world.h - 1, Math.floor((camY + VH) / TS) + 1);
+  const x1 = Math.min(world.w - 1, Math.floor((camX + VIEW.w) / TS) + 1);
+  const y1 = Math.min(world.h - 1, Math.floor((camY + VIEW.h) / TS) + 1);
   const mat = world.mat, ww = world.w, deco = world.deco, seen = world.seen;
   const can = atlas.canvas;
 
@@ -245,8 +250,8 @@ export function drawGlow(g, G) {
 
   const world = G.world, lf = G.lf;
   const x0 = Math.max(0, Math.floor(camX / TS) - 1), y0 = Math.max(0, Math.floor(camY / TS) - 1);
-  const x1 = Math.min(world.w - 1, Math.floor((camX + VW) / TS) + 1);
-  const y1 = Math.min(world.h - 1, Math.floor((camY + VH) / TS) + 1);
+  const x1 = Math.min(world.w - 1, Math.floor((camX + VIEW.w) / TS) + 1);
+  const y1 = Math.min(world.h - 1, Math.floor((camY + VIEW.h) / TS) + 1);
   for (let ty = y0; ty <= y1; ty++) {
     const row = ty * world.w;
     for (let tx = x0; tx <= x1; tx++) {
@@ -301,8 +306,8 @@ export function drawFleckGlints(g, G) {
   const world = G.world, lf = G.lf;
   const camX = G.cam.ix, camY = G.cam.iy;
   const x0 = Math.max(0, Math.floor(camX / TS)), y0 = Math.max(0, Math.floor(camY / TS));
-  const x1 = Math.min(world.w - 1, Math.floor((camX + VW) / TS));
-  const y1 = Math.min(world.h - 1, Math.floor((camY + VH) / TS));
+  const x1 = Math.min(world.w - 1, Math.floor((camX + VIEW.w) / TS));
+  const y1 = Math.min(world.h - 1, Math.floor((camY + VIEW.h) / TS));
   const floor = eye >= 3 ? 0.03 : 0.055;      // how faint a light still counts
   const twinkle = Math.sin(G.t * 3.1);
   g.save();
@@ -330,11 +335,12 @@ export function drawVignette(g, G) {
   const v = G.vignette;
   if (v <= 0.01) return;
   g.save();
-  const grad = g.createRadialGradient(VW / 2, VH / 2, VH * 0.28, VW / 2, VH / 2, VH * 0.85);
+  const vx = VIEW.x + VIEW.w / 2, vy = VIEW.y + VIEW.h / 2, vr = Math.min(VIEW.w, VIEW.h);
+  const grad = g.createRadialGradient(vx, vy, vr * 0.28, vx, vy, vr * 0.85);
   grad.addColorStop(0, 'rgba(0,0,0,0)');
   grad.addColorStop(1, `rgba(4,2,6,${clamp(v, 0, 0.92)})`);
   g.fillStyle = grad;
-  g.fillRect(0, 0, VW, VH);
+  g.fillRect(VIEW.x, VIEW.y, VIEW.w, VIEW.h);
   g.restore();
 }
 
@@ -344,7 +350,7 @@ export function drawFlash(g, G) {
   g.globalCompositeOperation = 'lighter';
   g.globalAlpha = clamp(G.flash.a, 0, 1) * 0.6;
   g.fillStyle = G.flash.color;
-  g.fillRect(0, 0, VW, VH);
+  g.fillRect(VIEW.x, VIEW.y, VIEW.w, VIEW.h);
   g.restore();
 }
 

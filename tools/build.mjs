@@ -28,16 +28,33 @@ const STYLE = `
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--void);color:var(--text);overflow:hidden;
   font-family:var(--label);-webkit-font-smoothing:antialiased;
-  -webkit-user-select:none;user-select:none;touch-action:none;overscroll-behavior:none;}
-#wrap{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;gap:14px;background:
+  -webkit-user-select:none;user-select:none;touch-action:none;overscroll-behavior:none;
+  -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;}
+/* The wrap is the box the game may use. JS measures it and sizes the canvas inside it, so one
+   code path serves a full-bleed phone and a framed desktop window. On a phone the canvas fills
+   it edge to edge; letterboxing a 16:9 strip into a 2.16:1 screen wastes three quarters of it. */
+#wrap{position:fixed;inset:0;overflow:hidden;background:
   radial-gradient(120% 90% at 50% 0%,#0e0c16 0%,var(--void) 62%);}
-canvas{image-rendering:pixelated;image-rendering:crisp-edges;display:block;background:var(--void);
-  border:1px solid var(--rim);box-shadow:0 0 0 1px #000,0 30px 90px -20px rgba(0,0,0,.95),
+canvas{position:absolute;left:0;top:0;display:block;background:var(--void);
+  image-rendering:pixelated;image-rendering:crisp-edges;}
+body.framed canvas{border:1px solid var(--rim);
+  box-shadow:0 0 0 1px #000,0 30px 90px -20px rgba(0,0,0,.95),
   0 0 120px -40px rgba(255,207,138,.20);}
-#keys{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:6px 10px;
-  max-width:min(92vw,860px);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
-  transition:opacity .8s ease;}
+/* A zero-size probe whose padding resolves the safe-area insets, so JS can read a notch
+   without hard-coding a device. */
+#safe{position:fixed;top:0;left:0;width:0;height:0;visibility:hidden;pointer-events:none;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right)
+          env(safe-area-inset-bottom) env(safe-area-inset-left);}
+#keys{display:none;}
+/* The keyboard legend only exists for people with a keyboard. When it is shown it takes a
+   strip off the bottom of the wrap, which the canvas sizing then simply respects. */
+@media (pointer:fine) and (min-width:760px) and (min-height:460px){
+  #wrap{bottom:42px;}
+  #keys{display:flex;position:fixed;left:0;right:0;bottom:0;height:42px;
+    flex-wrap:wrap;justify-content:center;align-items:center;gap:4px 10px;padding:0 12px;
+    font-size:12px;letter-spacing:.14em;text-transform:uppercase;overflow:hidden;
+    transition:opacity .8s ease;}
+}
 #keys b{font-weight:500;color:var(--dim)}
 #keys kbd{font-family:var(--label);font-weight:700;font-size:11px;letter-spacing:.10em;
   color:var(--bone);background:var(--panel);border:1px solid var(--rim);
@@ -48,7 +65,6 @@ body.playing #keys{opacity:.22}
 #boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
   color:var(--dim);font-size:13px;letter-spacing:.5em;pointer-events:none;}
 @media (prefers-reduced-motion:reduce){#keys{transition:none}}
-@media (max-height:560px){#keys{display:none}}
 `;
 
 const KEYS = `<div id="keys">
@@ -63,7 +79,8 @@ const KEYS = `<div id="keys">
 <span class="sep">/</span><span><kbd>R</kbd> <b>Dig again</b></span>
 </div>`;
 
-const BODY = `<div id="wrap"><canvas id="game"></canvas>${KEYS}</div>
+const BODY = `<div id="wrap"><canvas id="game"></canvas></div>
+<div id="safe"></div>${KEYS}
 <div id="boot">DESCENDING</div>
 <script>${js}
 document.getElementById('boot').remove();

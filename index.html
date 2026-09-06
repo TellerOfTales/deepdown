@@ -8,14 +8,24 @@
 <style>
   html,body{margin:0;height:100%;background:#06060b;overflow:hidden;
     font-family:ui-monospace,Menlo,Consolas,monospace;color:#8a8496;
-    -webkit-user-select:none;user-select:none;touch-action:none;overscroll-behavior:none;}
-  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;}
-  canvas{image-rendering:pixelated;image-rendering:crisp-edges;display:block;
-    background:#06060b;box-shadow:0 0 0 1px #1a1620,0 24px 80px rgba(0,0,0,.8);}
+    -webkit-user-select:none;user-select:none;touch-action:none;overscroll-behavior:none;
+    -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;}
+  /* The wrap is the box the game is allowed to use. JS measures it and sizes the canvas
+     inside it, so the same code serves a full-bleed phone and a framed desktop window. */
+  #wrap{position:fixed;inset:0;overflow:hidden;}
+  canvas{position:absolute;left:0;top:0;image-rendering:pixelated;image-rendering:crisp-edges;
+    display:block;background:#06060b;}
+  body.framed canvas{box-shadow:0 0 0 1px #1a1620,0 24px 80px rgba(0,0,0,.8);}
+  /* A zero-size probe whose padding resolves the safe-area insets, so JS can read them
+     without hard-coding a device. */
+  #safe{position:fixed;top:0;left:0;width:0;height:0;visibility:hidden;pointer-events:none;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right)
+            env(safe-area-inset-bottom) env(safe-area-inset-left);}
 </style>
 </head>
 <body>
 <div id="wrap"><canvas id="game"></canvas></div>
+<div id="safe"></div>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

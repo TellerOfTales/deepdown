@@ -9,7 +9,7 @@ import { drawSprite, frameAt } from '../art/spritesheet.js';
 import * as SP from '../art/sprites_props.js';
 import * as PA from '../art/sprites_player.js';
 import { P } from '../art/pal.js';
-import { VW, VH } from '../config.js';
+import { VW, VH, SAFE } from '../config.js';
 import { STRATA } from '../world/tiles.js';
 import { clamp, hashf } from '../core/rng.js';
 import { money, moneyBig } from './hud.js';
@@ -36,8 +36,41 @@ export function upgradeCost(u, level) {
 
 const S = { t: 0, dust: null, sel: 0 };
 
+/**
+ * One description of the Depot, used by the drawing code and by the pointer hit-test in
+ * game.js. They disagreed once — a tap bought whatever row happened to be under the old
+ * hard-coded arithmetic — and the only durable fix is to have one of them.
+ *
+ * Narrow screens drop the second column entirely. A phone held upright is the best shape this
+ * screen has ever had: twelve upgrades in one unbroken list, no scrolling, no columns.
+ */
+export function depotLayout(sel) {
+  const narrow = VW < 380;
+  const pad = Math.max(6, Math.round(VW * 0.028));
+  const lx = SAFE.l + pad;
+  const lw = narrow ? VW - SAFE.l - SAFE.r - pad * 2 : 268;
+  const headH = narrow ? 40 : 44;
+  const ly = SAFE.t + headH;
+  const barH = 22;
+  const barY = VH - SAFE.b - barH - 14;
+  // Reserve room for the description under the list, and on a phone for the last-run line too.
+  const listBottom = barY - (narrow ? 62 : 24);
+  // On a phone the rows grow to fill the column. A 13px row is a 7mm target; letting the list
+  // breathe into the space a portrait screen actually has makes every row a thumb-sized one
+  // and gets rid of the dead band that opened up under it.
+  const rowH = narrow
+    ? Math.max(13, Math.min(26, Math.floor((listBottom - ly) / UPGRADES.length)))
+    : 13;
+  const view = Math.max(4, Math.min(UPGRADES.length, Math.floor((listBottom - ly) / rowH)));
+  const cur = sel === undefined ? S.sel : sel;
+  const first = clamp(cur - Math.floor(view / 2), 0, Math.max(0, UPGRADES.length - view));
+  const rx = narrow ? 0 : 288, rw = narrow ? 0 : VW - 288 - 10;
+  return { narrow, pad, lx, lw, ly, rowH, view, first, barY, barH, rx, rw, listBottom };
+}
+
 export function screensUpdate(G, dt) {
   S.t += dt;
+  S.sel = G.ui ? (G.ui.sel | 0) : 0;
   if (!S.dust) {
     S.dust = [];
     for (let i = 0; i < 90; i++) {
@@ -69,9 +102,12 @@ function panel(g, x, y, w, h, a) {
 function shaftBackdrop(g, depth) {
   fill(g, P.VOID);
   const cx = VW / 2, cy = VH * 0.52;
+  // The shaft recedes to the middle of whatever screen it is on. Sized in absolutes it was a
+  // faint rectangle floating in the corner of a phone.
+  const fw = VW * 1.1, fh = VH * 1.15;
   for (let i = 11; i >= 0; i--) {
     const k = i / 11;
-    const w = 40 + k * 520, h = 24 + k * 300;
+    const w = fw * 0.08 + k * fw, h = fh * 0.09 + k * fh;
     g.save();
     g.globalAlpha = 0.055 + (1 - k) * 0.055;
     g.fillStyle = i % 2 ? P.ROCK1 : P.ROCK0;
@@ -86,7 +122,10 @@ function shaftBackdrop(g, depth) {
   }
   g.restore();
   // three far lights: something is down there and it is lit
-  const lights = [[cx - 62, cy + 12, P.GOLD4], [cx + 74, cy - 26, P.CYAN4], [cx + 18, cy + 44, P.MAG4]];
+  const lights = [
+    [cx - VW * 0.13, cy + VH * 0.045, P.GOLD4],
+    [cx + VW * 0.155, cy - VH * 0.10, P.CYAN4],
+    [cx + VW * 0.038, cy + VH * 0.163, P.MAG4]];
   g.save(); g.globalCompositeOperation = 'lighter';
   for (let i = 0; i < lights.length; i++) {
     const [lx, ly, col] = lights[i];
@@ -101,36 +140,53 @@ function shaftBackdrop(g, depth) {
 
 export function drawTitle(g, G, dt) {
   shaftBackdrop(g, 0);
-  const y = 58;
+  const cx = VW / 2;
+  // The wordmark is set from the width it has: five-scale letters are 6 px per stroke and
+  // 'DEEPER' at scale 5 is 209 px, which does not fit a phone.
+  const sc = VW >= 400 ? 5 : VW >= 300 ? 4 : 3;
+  const y = Math.round(SAFE.t + VH * 0.20);
   const bob = Math.round(Math.sin(S.t * 1.1) * 1);
-  text(g, 'DEEPER', VW / 2 + 1, y + 1 + bob, { color: P.INK, align: 'center', scale: 5 });
-  text(g, 'DEEPER', VW / 2, y + bob, { color: P.UI_GOLD, align: 'center', scale: 5 });
-  text(g, 'DEEPER', VW / 2 - 1, y - 1 + bob, { color: P.GOLD5, align: 'center', scale: 5, alpha: 0.25 });
-  text(g, 'READ THE ROCK.  TAKE WHAT YOU CAN CARRY.  KNOW WHEN TO STOP.',
-    VW / 2, y + 46, { color: P.UI_DIM, align: 'center' });
+  text(g, 'DEEPER', cx + 1, y + 1 + bob, { color: P.INK, align: 'center', scale: sc });
+  text(g, 'DEEPER', cx, y + bob, { color: P.UI_GOLD, align: 'center', scale: sc });
+  text(g, 'DEEPER', cx - 1, y - 1 + bob, { color: P.GOLD5, align: 'center', scale: sc, alpha: 0.25 });
 
+  const tagY = y + FONT_H * sc + 12;
+  const tag = VW < 320
+    ? ['READ THE ROCK.', 'TAKE WHAT YOU CAN CARRY.', 'KNOW WHEN TO STOP.']
+    : ['READ THE ROCK.  TAKE WHAT YOU CAN CARRY.  KNOW WHEN TO STOP.'];
+  for (let i = 0; i < tag.length; i++) {
+    text(g, tag[i], cx, tagY + i * 10, { color: P.UI_DIM, align: 'center', maxWidth: VW - 12 });
+  }
+
+  const foot = VH - SAFE.b;
   if (G.stats.runs > 0) {
-    text(g, 'DEEPEST ' + G.stats.deepest + ' M      BANKED ' + money(G.stats.banked) + '      RUNS ' + G.stats.runs,
-      VW / 2, VH - 46, { color: P.UI_DARK, align: 'center' });
+    const line = VW < 320
+      ? G.stats.deepest + ' M   ' + money(G.stats.banked) + '   ' + G.stats.runs + ' RUNS'
+      : 'DEEPEST ' + G.stats.deepest + ' M      BANKED ' + money(G.stats.banked) + '      RUNS ' + G.stats.runs;
+    text(g, line, cx, foot - 46, { color: P.UI_DARK, align: 'center', maxWidth: VW - 12 });
   }
   const a = 0.5 + Math.sin(S.t * 3.4) * 0.5;
-  text(g, 'PRESS ENTER', VW / 2, VH - 30, { color: P.UI_BONE, align: 'center', scale: 2, alpha: 0.45 + a * 0.55, shadow: true });
+  text(g, G.touch ? 'TAP TO BEGIN' : 'PRESS ENTER', cx, foot - 30,
+    { color: P.UI_BONE, align: 'center', scale: 2, alpha: 0.45 + a * 0.55, shadow: true });
 }
 
 export function drawDepot(g, G, dt) {
   fill(g, P.INK);
   g.save(); g.globalAlpha = 0.5; shaftBackdropSoft(g); g.restore();
 
-  text(g, 'THE DEPOT', 12, 8, { color: P.UI_DIM });
-  text(g, money(G.bank), 12, 17, { color: P.UI_GOLD, scale: 3, shadow: true });
-  text(g, 'BANKED', 12 + measure(money(G.bank), 3) + 6, 30, { color: P.UI_DARK });
+  const D = depotLayout(G.ui.sel);
+  const sel = clamp(G.ui.sel, 0, UPGRADES.length - 1);
+  const hx = D.lx + 2, hy = SAFE.t + 6;
+
+  text(g, 'THE DEPOT', hx, hy, { color: P.UI_DIM });
+  const bankSc = D.narrow ? 2 : 3;
+  text(g, money(G.bank), hx, hy + 9, { color: P.UI_GOLD, scale: bankSc, shadow: true });
+  text(g, 'BANKED', hx + measure(money(G.bank), bankSc) + 6, hy + 9 + (bankSc - 1) * 6,
+    { color: P.UI_DARK });
 
   // ── upgrades ──────────────────────────────────────────────────────────────
-  const lx = 10, ly = 44, lw = 268, rowH = 13;
-  const sel = clamp(G.ui.sel, 0, UPGRADES.length - 1);
-  const view = 12;
-  const first = clamp(sel - 5, 0, Math.max(0, UPGRADES.length - view));
-  for (let i = 0; i < Math.min(view, UPGRADES.length); i++) {
+  const { lx, ly, lw, rowH, view, first } = D;
+  for (let i = 0; i < view; i++) {
     const idx = first + i;
     const u = UPGRADES[idx];
     if (!u) break;
@@ -139,12 +195,12 @@ export function drawDepot(g, G, dt) {
     const cost = upgradeCost(u, lvl);
     const afford = !maxed && G.bank >= cost;
     const on = idx === sel;
-    const y = ly + i * rowH;
+    const rowTop = ly + i * rowH;
+    const y = rowTop + Math.floor((rowH - 13) / 2);   // content centred in a taller row
 
     if (on) {
-      g.fillStyle = P.UI_PANEL_HI; g.fillRect(lx, y - 2, lw, rowH);
-      g.strokeStyle = P.UI_GOLD; g.strokeRect(lx + 0.5, y - 1.5, lw - 1, rowH - 1);
-      text(g, '>', lx - 6, y + 2, { color: P.UI_GOLD });
+      g.fillStyle = P.UI_PANEL_HI; g.fillRect(lx, rowTop - 2, lw, rowH);
+      g.strokeStyle = P.UI_GOLD; g.strokeRect(lx + 0.5, rowTop - 1.5, lw - 1, rowH - 1);
     }
     const nameCol = maxed ? P.UI_GOOD : afford ? P.UI_BONE : P.UI_DARK;
     const spr = SP[u.icon];
@@ -153,11 +209,16 @@ export function drawDepot(g, G, dt) {
       drawSprite(g, spr, 0, lx + 3, y, null);
       g.restore();
     }
-    text(g, u.name, lx + 17, y + 2, { color: nameCol });
-    // level pips
+    // Price first, then pips, then whatever width is left for the name: on a phone the name
+    // is the part that can be truncated without costing the player a decision.
+    const priceW = measure(maxed ? 'MAX' : money(cost), 1);
+    const pipsW = u.max * 5 + 4;
+    const nameX = lx + 17;
+    const nameW = lw - 6 - priceW - pipsW - (nameX - lx);
+    text(g, u.name, nameX, y + 2, { color: nameCol, maxWidth: Math.max(24, nameW) });
     for (let k = 0; k < u.max; k++) {
       g.fillStyle = k < lvl ? P.UI_GOLD : P.UI_DARK;
-      g.fillRect(lx + 172 + k * 5, y + 3, 3, 3);
+      g.fillRect(lx + lw - 6 - priceW - pipsW + k * 5, y + 3, 3, 3);
     }
     text(g, maxed ? 'MAX' : money(cost), lx + lw - 4, y + 2,
       { color: maxed ? P.UI_GOOD : afford ? P.UI_GOLD : P.UI_DARK, align: 'right' });
@@ -165,103 +226,159 @@ export function drawDepot(g, G, dt) {
   // The description of the highlighted row lives on its own line under the list, so a long
   // sentence can never collide with the row beneath it.
   const cur = UPGRADES[sel];
+  const listEnd = ly + view * rowH;
   if (cur) {
     const curLvl = G.upgrades[cur.id] | 0;
     g.fillStyle = P.UI_DARK;
-    g.fillRect(lx, ly + Math.min(view, UPGRADES.length) * rowH + 2, lw, 1);
-    // The pips on the row already say the level; the line under the list is for the WHY.
-    text(g, curLvl >= cur.max ? 'FITTED. ' + cur.desc : cur.desc,
-      lx + 2, ly + Math.min(view, UPGRADES.length) * rowH + 7,
-      { color: curLvl >= cur.max ? P.UI_GOOD : P.UI_COOL, maxWidth: lw - 6 });
-  }
-
-  // ── right column ──────────────────────────────────────────────────────────
-  const rx = 288, rw = VW - rx - 10;
-  panel(g, rx, 44, rw, 96, 0.82);
-  text(g, 'LAST EXPEDITION', rx + 6, 50, { color: P.UI_DIM });
-  const lr = G.lastRun;
-  if (!lr) {
-    text(g, 'NONE YET.', rx + 6, 62, { color: P.UI_DARK });
-    text(g, 'THE LIFT IS WAITING.', rx + 6, 71, { color: P.UI_DARK });
-  } else {
-    text(g, lr.extracted ? 'EXTRACTED' : 'LOST', rx + 6, 60, { color: lr.extracted ? P.UI_GOOD : P.UI_DANGER, scale: 2 });
-    if (lr.deep && lr.extracted) text(g, 'BACK FROM THE EMBERDEEP', rx + 6, 88, { color: P.UI_GOLD });
-    text(g, lr.depth + ' M', rx + rw - 6, 62, { color: P.UI_BONE, align: 'right' });
-    text(g, (lr.extracted ? 'BANKED ' : 'AT ') + money(lr.value), rx + 6, 78, { color: lr.extracted ? P.UI_GOLD : P.UI_DARK });
-    const notes = (lr.learned || []).slice(-3);
-    text(g, 'FIELD NOTES', rx + 6, lr.deep && lr.extracted ? 98 : 92, { color: P.UI_DIM });
-    if (!notes.length) text(g, 'NOTHING NEW.', rx + 6, 102, { color: P.UI_DARK });
-    for (let i = 0; i < notes.length; i++) {
-      const lines = wrap(notes[i], rw - 12, 1).slice(0, 2);
-      for (let k = 0; k < lines.length; k++) {
-        text(g, lines[k], rx + 6, 102 + i * 12 + k * 8, { color: k ? P.UI_DARK : P.UI_COOL });
-      }
+    g.fillRect(lx, listEnd + 2, lw, 1);
+    const desc = curLvl >= cur.max ? 'FITTED. ' + cur.desc : cur.desc;
+    const lines = wrap(desc, lw - 6, 1).slice(0, 2);
+    for (let k = 0; k < lines.length; k++) {
+      text(g, lines[k], lx + 2, listEnd + 7 + k * 8,
+        { color: curLvl >= cur.max ? P.UI_GOOD : P.UI_COOL });
     }
   }
 
-  panel(g, rx, 146, rw, 62, 0.82);
-  text(g, 'ARCHIVE', rx + 6, 152, { color: P.UI_DIM });
-  const found = G.journal.filter(j => j.found).length;
-  text(g, found + ' / ' + G.journal.length, rx + 6, 162, { color: P.UI_BONE, scale: 2 });
-  text(g, 'RELICS RECOVERED', rx + 6, 178, { color: P.UI_DARK });
-  text(g, G.discoveries.size + ' RULES CONFIRMED', rx + 6, 190, { color: P.UI_COOL });
-  text(g, 'TAB  FIELD JOURNAL', rx + 6, 199, { color: P.UI_DARK });
+  if (!D.narrow) {
+    // ── right column ────────────────────────────────────────────────────────
+    const rx = D.rx, rw = D.rw;
+    panel(g, rx, 44, rw, 96, 0.82);
+    text(g, 'LAST EXPEDITION', rx + 6, 50, { color: P.UI_DIM });
+    const lr = G.lastRun;
+    if (!lr) {
+      text(g, 'NONE YET.', rx + 6, 62, { color: P.UI_DARK });
+      text(g, 'THE LIFT IS WAITING.', rx + 6, 71, { color: P.UI_DARK });
+    } else {
+      text(g, lr.extracted ? 'EXTRACTED' : 'LOST', rx + 6, 60, { color: lr.extracted ? P.UI_GOOD : P.UI_DANGER, scale: 2 });
+      if (lr.deep && lr.extracted) text(g, 'BACK FROM THE EMBERDEEP', rx + 6, 88, { color: P.UI_GOLD });
+      text(g, lr.depth + ' M', rx + rw - 6, 62, { color: P.UI_BONE, align: 'right' });
+      text(g, (lr.extracted ? 'BANKED ' : 'AT ') + money(lr.value), rx + 6, 78, { color: lr.extracted ? P.UI_GOLD : P.UI_DARK });
+      const notes = (lr.learned || []).slice(-3);
+      text(g, 'FIELD NOTES', rx + 6, lr.deep && lr.extracted ? 98 : 92, { color: P.UI_DIM });
+      if (!notes.length) text(g, 'NOTHING NEW.', rx + 6, 102, { color: P.UI_DARK });
+      for (let i = 0; i < notes.length; i++) {
+        const lines = wrap(notes[i], rw - 12, 1).slice(0, 2);
+        for (let k = 0; k < lines.length; k++) {
+          text(g, lines[k], rx + 6, 102 + i * 12 + k * 8, { color: k ? P.UI_DARK : P.UI_COOL });
+        }
+      }
+    }
+
+    panel(g, rx, 146, rw, 62, 0.82);
+    text(g, 'ARCHIVE', rx + 6, 152, { color: P.UI_DIM });
+    const found = G.journal.filter(j => j.found).length;
+    text(g, found + ' / ' + G.journal.length, rx + 6, 162, { color: P.UI_BONE, scale: 2 });
+    text(g, 'RELICS RECOVERED', rx + 6, 178, { color: P.UI_DARK });
+    text(g, G.discoveries.size + ' RULES CONFIRMED', rx + 6, 190, { color: P.UI_COOL });
+    text(g, 'TAB  FIELD JOURNAL', rx + 6, 199, { color: P.UI_DARK });
+  } else {
+    // ── narrow: one line of last-run fact where the column used to be ───────
+    const lr = G.lastRun;
+    const y = D.barY - 30;
+    g.fillStyle = P.UI_DARK; g.fillRect(lx, y - 4, lw, 1);
+    if (!lr) {
+      text(g, 'THE LIFT IS WAITING.', lx + 2, y + 1, { color: P.UI_DARK });
+    } else {
+      text(g, lr.extracted ? 'EXTRACTED' : 'LOST', lx + 2, y + 1,
+        { color: lr.extracted ? P.UI_GOOD : P.UI_DANGER });
+      text(g, lr.depth + ' M   ' + (lr.extracted ? 'BANKED ' : 'AT ') + money(lr.value),
+        lx + lw - 2, y + 1, { color: P.UI_BONE, align: 'right' });
+      const note = (lr.learned || []).slice(-1)[0];
+      if (note) text(g, note, lx + 2, y + 11, { color: P.UI_COOL, maxWidth: lw - 4 });
+    }
+    const found = G.journal.filter(j => j.found).length;
+    text(g, found + '/' + G.journal.length + ' RELICS    ' + G.discoveries.size + ' RULES',
+      lx + 2, y + 20, { color: P.UI_DARK });
+  }
 
   // ── the button that matters ───────────────────────────────────────────────
-  const by = VH - 34, bh = 22;
+  const by = D.barY, bh = D.barH;
   const pulse = 0.62 + Math.sin(S.t * 3.2) * 0.38;
   g.save();
   g.globalAlpha = 0.25 + pulse * 0.35;
-  g.fillStyle = P.GOLD1; g.fillRect(10, by, VW - 20, bh);
+  g.fillStyle = P.GOLD1; g.fillRect(lx, by, lw, bh);
   g.restore();
-  g.strokeStyle = P.UI_GOLD; g.strokeRect(10.5, by + 0.5, VW - 21, bh - 1);
-  text(g, 'SPACE   DESCEND', VW / 2, by + 6, { color: P.GOLD5, align: 'center', scale: 2, shadow: true });
-  text(g, 'UP/DOWN SELECT    ENTER BUY    OR CLICK', VW / 2, VH - 8, { color: P.UI_DARK, align: 'center' });
+  g.strokeStyle = P.UI_GOLD; g.strokeRect(lx + 0.5, by + 0.5, lw - 1, bh - 1);
+  text(g, G.touch ? 'DESCEND' : 'SPACE   DESCEND', lx + lw / 2, by + 6,
+    { color: P.GOLD5, align: 'center', scale: 2, shadow: true });
+  text(g, G.touch ? 'TAP A ROW, TAP AGAIN TO BUY' : 'UP/DOWN SELECT    ENTER BUY    OR CLICK',
+    lx + lw / 2, by + bh + 5, { color: P.UI_DARK, align: 'center', maxWidth: lw });
 }
 
 function shaftBackdropSoft(g) {
   const cx = VW / 2, cy = VH * 0.5;
+  const fw = VW * 1.17, fh = VH * 1.19;
   for (let i = 9; i >= 0; i--) {
     const k = i / 9;
-    const w = 60 + k * 560, h = 30 + k * 320;
+    const w = fw * 0.11 + k * fw, h = fh * 0.11 + k * fh;
     g.globalAlpha = 0.05;
     g.fillStyle = i % 2 ? P.ROCK1 : P.ROCK0;
     g.fillRect(Math.round(cx - w / 2), Math.round(cy - h / 2), Math.round(w), Math.round(h));
   }
 }
 
+/** The two things a dead player can do, as rects, so a tap means what the screen says. */
+export function deathLayout() {
+  const foot = VH - SAFE.b;
+  const w = Math.min(VW - 24, 260), x = Math.round((VW - w) / 2);
+  return {
+    again: { x, y: foot - 44, w, h: 26 },
+    depot: { x, y: foot - 17, w, h: 15 },
+  };
+}
+
+/** Likewise for the pause screen: RESUME is a tap, ABANDON is a hold. */
+export function pauseLayout() {
+  const foot = VH - SAFE.b;
+  const w = Math.min(VW - 24, 220), x = Math.round((VW - w) / 2);
+  return {
+    resume: { x, y: foot - 44, w, h: 22 },
+    abandon: { x, y: foot - 20, w, h: 18 },
+  };
+}
+
 export function drawDeath(g, G, dt) {
   fill(g, P.VOID, 0.86);
   const lr = G.lastRun || { depth: G.runMaxDepth, value: 0, items: {}, learned: [], time: 0 };
 
-  text(g, 'BURIED AT', VW / 2, 22, { color: P.UI_DIM, align: 'center' });
-  text(g, lr.depth + ' M', VW / 2, 32, { color: P.UI_BONE, align: 'center', scale: 4, shadow: true });
+  const M = Math.max(10, Math.round(VW * 0.07));   // side margin
+  const cx = VW / 2;
+  const dSc = VW < 300 ? 3 : 4;
+  const top = SAFE.t;
+  text(g, 'BURIED AT', cx, top + 14, { color: P.UI_DIM, align: 'center' });
+  text(g, lr.depth + ' M', cx, top + 24, { color: P.UI_BONE, align: 'center', scale: dSc, shadow: true });
 
   // 1. what you learned — the largest block on the screen, on purpose
   const learned = (lr.learned || []);
-  text(g, 'WHAT YOU LEARNED', 30, 74, { color: P.UI_COOL });
-  g.fillStyle = P.UI_DARK; g.fillRect(30, 83, VW - 60, 1);
+  const l0 = top + 30 + FONT_H * dSc + 12;
+  const maxNotes = VH > 380 ? 5 : 4;
+  text(g, 'WHAT YOU LEARNED', M, l0, { color: P.UI_COOL });
+  g.fillStyle = P.UI_DARK; g.fillRect(M, l0 + 9, VW - M * 2, 1);
+  let yEnd = l0 + 16;
   if (!learned.length) {
     text(g, 'NOTHING. ' + String(G.deathCause || 'THE DARK').toUpperCase() + ' TOOK YOU FIRST.',
-      30, 90, { color: P.UI_DIM });
-    text(g, 'GO BACK AND PAY ATTENTION.', 30, 100, { color: P.UI_DARK });
+      M, l0 + 16, { color: P.UI_DIM, maxWidth: VW - M * 2 });
+    text(g, 'GO BACK AND PAY ATTENTION.', M, l0 + 26, { color: P.UI_DARK, maxWidth: VW - M * 2 });
+    yEnd = l0 + 36;
   } else {
-    let y = 90;
-    for (let i = 0; i < Math.min(4, learned.length); i++) {
-      const lines = wrap(learned[i], VW - 76, 1).slice(0, 2);
-      text(g, '-', 30, y, { color: P.UI_COOL });
-      for (let k = 0; k < lines.length; k++) text(g, lines[k], 40, y + k * 9, { color: k ? P.UI_DIM : P.UI_BONE });
+    let y = l0 + 16;
+    for (let i = 0; i < Math.min(maxNotes, learned.length); i++) {
+      const lines = wrap(learned[i], VW - M * 2 - 10, 1).slice(0, 2);
+      text(g, '-', M, y, { color: P.UI_COOL });
+      for (let k = 0; k < lines.length; k++) text(g, lines[k], M + 10, y + k * 9, { color: k ? P.UI_DIM : P.UI_BONE });
       y += lines.length * 9 + 4;
     }
-    if (learned.length > 4) text(g, '+' + (learned.length - 4) + ' MORE IN THE JOURNAL', 40, y, { color: P.UI_DARK });
+    if (learned.length > maxNotes) { text(g, '+' + (learned.length - maxNotes) + ' MORE IN THE JOURNAL', M + 10, y, { color: P.UI_DARK }); y += 10; }
+    yEnd = y;
   }
 
   // 2. what it cost
-  const ly = 150;
-  text(g, 'LOST', 30, ly, { color: P.UI_DANGER });
-  g.fillStyle = P.UI_DARK; g.fillRect(30, ly + 9, VW - 60, 1);
-  moneyBig(g, lr.value, 30 + measure(String(Math.round(lr.value)), 2) + 10, ly + 15, 2, P.UI_DANGER, 1);
-  let ix = 30 + measure(money(lr.value), 2) + 14;
+  const foot = VH - SAFE.b;
+  const ly = Math.max(yEnd + 8, foot - 92);
+  text(g, 'LOST', M, ly, { color: P.UI_DANGER });
+  g.fillStyle = P.UI_DARK; g.fillRect(M, ly + 9, VW - M * 2, 1);
+  moneyBig(g, lr.value, M + measure(String(Math.round(lr.value)), 2) + 10, ly + 15, 2, P.UI_DANGER, 1);
+  let ix = M + measure(money(lr.value), 2) + 14;
   for (const k of ['nugget', 'gem', 'shard', 'bone', 'relic']) {
     const n = lr.items[k] | 0;
     if (!n) continue;
@@ -271,18 +388,34 @@ export function drawDeath(g, G, dt) {
     g.restore();
     text(g, 'x' + n, ix + 12, ly + 18, { color: P.UI_DARK });
     ix += 30;
+    if (ix > VW - M - 24) break;
   }
 
   // 3. the dry facts
   // This run's numbers, not a lifetime total dressed up as one.
   const acc = lr.strikes ? Math.round(lr.crits / lr.strikes * 100) : 0;
-  text(g, 'TILES ' + (lr.tiles | 0) + '     BEST COMBO x' + (lr.combo | 0) +
-        '     ON THE BEAT ' + acc + '%     ' + Math.round(lr.time) + 'S',
-    VW / 2, VH - 46, { color: P.UI_DARK, align: 'center' });
+  const facts = VW < 340
+    ? (lr.tiles | 0) + ' TILES   x' + (lr.combo | 0) + '   ' + acc + '% ON BEAT   ' + Math.round(lr.time) + 'S'
+    : 'TILES ' + (lr.tiles | 0) + '     BEST COMBO x' + (lr.combo | 0) +
+      '     ON THE BEAT ' + acc + '%     ' + Math.round(lr.time) + 'S';
+  text(g, facts, cx, foot - 46, { color: P.UI_DARK, align: 'center', maxWidth: VW - 8 });
 
   const pulse = 0.55 + Math.sin(S.t * 4) * 0.45;
-  text(g, 'R    DIG AGAIN', VW / 2, VH - 34, { color: P.UI_GOLD, align: 'center', scale: 3, alpha: 0.5 + pulse * 0.5, shadow: true });
-  text(g, 'ENTER  THE DEPOT', VW / 2, VH - 10, { color: P.UI_DARK, align: 'center' });
+  const DL = deathLayout();
+  if (G.touch) {
+    // Draw the button, because on a phone the only thing that reads as pressable is a button.
+    g.save();
+    g.globalAlpha = 0.22 + pulse * 0.28; g.fillStyle = P.GOLD1;
+    g.fillRect(DL.again.x, DL.again.y, DL.again.w, DL.again.h);
+    g.restore();
+    g.strokeStyle = P.UI_GOLD;
+    g.strokeRect(DL.again.x + 0.5, DL.again.y + 0.5, DL.again.w - 1, DL.again.h - 1);
+  }
+  const again = G.touch ? 'DIG AGAIN' : 'R    DIG AGAIN';
+  text(g, again, cx, DL.again.y + 6, { color: G.touch ? P.GOLD5 : P.UI_GOLD, align: 'center',
+    scale: VW < 300 ? 2 : 3, alpha: G.touch ? 1 : 0.5 + pulse * 0.5, shadow: true });
+  text(g, G.touch ? 'THE DEPOT' : 'ENTER  THE DEPOT', cx, DL.depot.y + 4,
+    { color: P.UI_DARK, align: 'center' });
 }
 
 export function drawJournal(g, G, dt) {
@@ -335,8 +468,20 @@ export function drawJournal(g, G, dt) {
 
 export function drawPause(g, G, dt) {
   fill(g, P.VOID, 0.78);
-  text(g, 'PAUSED', VW / 2, 46, { color: P.UI_BONE, align: 'center', scale: 4 });
-  const lines = [
+  const cx = VW / 2;
+  const top = SAFE.t, foot = VH - SAFE.b;
+  text(g, 'PAUSED', cx, top + 24, { color: P.UI_BONE, align: 'center', scale: VW < 300 ? 3 : 4 });
+
+  // Tell the player about the controls they actually have.
+  const lines = G.touch ? [
+    'PAD          MOVE   AIM   CLIMB',
+    'DIG          HOLD FOR A HEAVY STRIKE',
+    'JUMP         JUMP',
+    'BLAST        BLAST CHARGE',
+    'PING         SONAR PULSE',
+    'USE          THE SHAFT   THE LIFT',
+    'DIM          DIM THE LANTERN',
+  ] : [
     'A D / ARROWS      MOVE',
     'W S               AIM   CLIMB',
     'SPACE  J          DIG   HOLD FOR HEAVY',
@@ -348,14 +493,29 @@ export function drawPause(g, G, dt) {
     'TAB               FIELD JOURNAL (IN THE DEPOT)',
     'M                 MUTE',
   ];
-  let y = 96;
-  for (const l of lines) { text(g, l, VW / 2 - 110, y, { color: P.UI_DIM }); y += 11; }
-  text(g, 'ESC  RESUME', VW / 2, VH - 34, { color: P.UI_GOOD, align: 'center', scale: 2 });
+  const lh = 11;
+  const lx = Math.max(8, Math.round(cx - Math.min(220, VW - 24) / 2));
+  let y = Math.max(top + 56, Math.round((VH - lines.length * lh) / 2) - 10);
+  for (const l of lines) { text(g, l, lx, y, { color: P.UI_DIM, maxWidth: VW - 16 }); y += lh; }
+
+  const PL = pauseLayout();
+  if (G.touch) {
+    g.save(); g.globalAlpha = 0.24; g.fillStyle = P.UI_GOOD;
+    g.fillRect(PL.resume.x, PL.resume.y, PL.resume.w, PL.resume.h); g.restore();
+    g.strokeStyle = P.UI_GOOD;
+    g.strokeRect(PL.resume.x + 0.5, PL.resume.y + 0.5, PL.resume.w - 1, PL.resume.h - 1);
+  }
+  text(g, G.touch ? 'RESUME' : 'ESC  RESUME', cx, PL.resume.y + 6,
+    { color: P.UI_GOOD, align: 'center', scale: 2 });
+
   const hold = clamp((G.abandonHold || 0) / 1.15, 0, 1);
-  text(g, hold > 0 ? 'KEEP HOLDING...' : 'HOLD Q  ABANDON RUN  (LOSE THE HAUL)',
-    VW / 2, VH - 14, { color: P.UI_DANGER, align: 'center' });
+  const abandonLabel = hold > 0 ? 'KEEP HOLDING...'
+    : (G.touch ? 'HOLD HERE  ABANDON RUN  (LOSE THE HAUL)' : 'HOLD Q  ABANDON RUN  (LOSE THE HAUL)');
+  text(g, abandonLabel, cx, PL.abandon.y + 4,
+    { color: P.UI_DANGER, align: 'center', maxWidth: VW - 12 });
   if (hold > 0) {
-    g.fillStyle = P.UI_DARK; g.fillRect(VW / 2 - 60, VH - 5, 120, 3);
-    g.fillStyle = P.UI_DANGER; g.fillRect(VW / 2 - 60, VH - 5, Math.round(120 * hold), 3);
+    const bw = Math.min(120, VW - 40);
+    g.fillStyle = P.UI_DARK; g.fillRect(cx - bw / 2, PL.abandon.y + 14, bw, 3);
+    g.fillStyle = P.UI_DANGER; g.fillRect(cx - bw / 2, PL.abandon.y + 14, Math.round(bw * hold), 3);
   }
 }

@@ -2,7 +2,33 @@
 // GDD Pillar 1: digging must feel good with NO progression attached — these numbers are the game.
 
 export const TS = 16;              // tile size in px (1 tile == 1 metre)
-export const VW = 480, VH = 270;   // internal render resolution (30 x 16.875 tiles)
+
+// Internal render resolution, in virtual pixels. NOT a constant: a phone held upright is a
+// different shape from a monitor, and letterboxing a 16:9 strip into the middle of a 2.16:1
+// screen throws away three quarters of the display. main.js recomputes these on every resize
+// and orientation change so the canvas always fills exactly what it was given.
+//
+// These are live module bindings: every importer reads the current value at call time, so
+// layout code must USE them rather than capture them at module scope.
+export let VW = 480, VH = 270;
+
+// The rect of the canvas that shows the world. In landscape it is the whole canvas; in portrait
+// the bottom band is a control deck, and the world sits above it. Everything that converts
+// between world space and screen space goes through this.
+export const VIEW = { x: 0, y: 0, w: 480, h: 270 };
+
+// Safe-area insets (notch, home indicator, rounded corners) in VIRTUAL px. The world bleeds
+// under them on purpose; the HUD and the controls do not.
+export const SAFE = { t: 0, r: 0, b: 0, l: 0 };
+
+/** Called by main.js only. Everything else reads. */
+export function setViewport(w, h, view, safe) {
+  VW = w; VH = h;
+  // Mutated in place, never reassigned: a module that grabbed a reference to VIEW at import
+  // time must keep seeing the live rect.
+  VIEW.x = view.x; VIEW.y = view.y; VIEW.w = view.w; VIEW.h = view.h;
+  SAFE.t = safe.t; SAFE.r = safe.r; SAFE.b = safe.b; SAFE.l = safe.l;
+}
 
 export const CFG = {
   // ── strike rhythm ────────────────────────────────────────────────────────────

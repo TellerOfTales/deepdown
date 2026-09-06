@@ -23,6 +23,8 @@ export const MAP = {
   next:    ['Tab'],
 };
 
+import { L, hitControl } from '../ui/layout.js';
+
 export class Input {
   constructor() {
     this.down = new Set();
@@ -33,11 +35,11 @@ export class Input {
     this.rdown = false; this.rpressed = false;
     this.anyPressed = false;
     this.touch = { active: false, dx: 0, dy: 0, dig: false, jump: false, util: false, id: -1 };
-    this.touchButtons = [];   // filled by the renderer so we can hit-test in virtual coords
     this.lastDevice = 'key';
     // While a full-screen UI owns the frame, every touch is a pointer tap: the virtual stick
     // and the DIG button are run-mode concepts and must not swallow taps meant for a menu.
     this.uiPointer = false;
+    this.uiDown = false;   // a pointer is currently down on a full-screen UI
   }
 
   attach(canvas, toVirtual) {
@@ -52,7 +54,7 @@ export class Input {
     const ku = (e) => { this.down.delete(e.code); this.releasedSet.add(e.code); };
     window.addEventListener('keydown', kd);
     window.addEventListener('keyup', ku);
-    window.addEventListener('blur', () => { this.down.clear(); this.mdown = false; });
+    window.addEventListener('blur', () => { this.down.clear(); this.mdown = false; this.uiDown = false; });
 
     const mm = (e) => {
       const p = this._toVirtual(e.clientX, e.clientY);
@@ -91,48 +93,90 @@ export class Input {
     this.mx = p.x; this.my = p.y;          // a tap is a pointer position, same as a click
     this.lastDevice = 'touch';
     if (this.uiPointer) {
+      // A full-screen UI owns every touch: the d-pad and DIG are run-mode concepts and must
+      // not swallow a tap meant for a menu row.
       this._touches.set(t.identifier, { tap: true });
       this.touch._ptap = true;
+      this.uiDown = true;
       this.anyPressed = true;
       return;
     }
-    const btn = this._hitButton(p.x, p.y);
-    if (btn) { this._touches.set(t.identifier, { btn: btn.id }); this.touch[btn.id] = true; this.touch['_p' + btn.id] = true; this.anyPressed = true; return; }
-    if (p.x < 200) {
-      this._touches.set(t.identifier, { stick: true, ox: p.x, oy: p.y });
-      this.touch.active = true; this.touch.dx = 0; this.touch.dy = 0;
-    } else {
-      this._touches.set(t.identifier, { btn: 'dig' });
-      this.touch.dig = true; this.touch._pdig = true; this.anyPressed = true;
+    const btn = hitControl(p.x, p.y);
+    if (btn && btn.kind === 'pad') {
+      this._touches.set(t.identifier, { pad: true });
+      this._padPoint(p.x, p.y, btn);
+      this.touch.active = true;
+      return;
     }
+    if (btn) {
+      this._touches.set(t.identifier, { btn: btn.id });
+      this.touch[btn.id] = true;
+      this.touch['_p' + btn.id] = true;
+      this.anyPressed = true;
+      return;
+    }
+    // Anywhere else on the WORLD is a dig. The deck is not: a thumb that misses a button down
+    // there meant to hit one, and swinging a pick because of it is a lie.
+    if (L.deck > 0 && p.y >= L.vh - L.deck) {
+      this._touches.set(t.identifier, { dead: true });
+      return;
+    }
+    this._touches.set(t.identifier, { btn: 'dig' });
+    this.touch.dig = true; this.touch._pdig = true; this.anyPressed = true;
   }
+
+  /**
+   * Resolve a point inside the d-pad into a direction. Eight-way with a dead hub: you AIM with
+   * this stick as well as walk with it, so a diagonal has to be reachable — but it must not be
+   * what you get every time your thumb drifts off centre, so the cardinals take the wider arc.
+   */
+  _padPoint(x, y, b) {
+    const dx = x - b.x, dy = y - b.y;
+    if (dx * dx + dy * dy <= b.dead * b.dead) { this.touch.dx = 0; this.touch.dy = 0; return; }
+    const ax = Math.abs(dx), ay = Math.abs(dy);
+    // A diagonal needs both axes to be genuinely engaged (within a 2.4:1 ratio); anything more
+    // lopsided than that is a cardinal the player is holding slightly askew.
+    const diag = ax > 0 && ay > 0 && Math.max(ax, ay) / Math.min(ax, ay) < 2.4;
+    this.touch.dx = (diag || ax >= ay) ? Math.sign(dx) : 0;
+    this.touch.dy = (diag || ay > ax) ? Math.sign(dy) : 0;
+  }
+
   _touchMove(t) {
     const rec = this._touches.get(t.identifier);
     const pm = this._toVirtual(t.clientX, t.clientY);
     this.mx = pm.x; this.my = pm.y;
-    if (!rec || !rec.stick) return;
-    const p = pm;
-    const dx = p.x - rec.ox, dy = p.y - rec.oy;
-    const dead = 5;
-    this.touch.dx = Math.abs(dx) > dead ? Math.sign(dx) : 0;
-    this.touch.dy = Math.abs(dy) > dead ? Math.sign(dy) : 0;
-    if (Math.abs(dx) > 26) rec.ox = p.x - Math.sign(dx) * 26;
-    if (Math.abs(dy) > 26) rec.oy = p.y - Math.sign(dy) * 26;
+    if (!rec) return;
+    if (rec.pad) {
+      const b = L.pad;
+      if (b) this._padPoint(pm.x, pm.y, b);
+      return;
+    }
+    // A thumb that slides off DIG has let go of it. Without this the button stayed stuck down
+    // and the pick kept swinging at nothing.
+    if (rec.btn) {
+      const hit = hitControl(pm.x, pm.y);
+      const on = !!hit && hit.id === rec.btn;
+      if (this.touch[rec.btn] !== on) this.touch[rec.btn] = on;
+    }
   }
+
   _touchUp(t) {
     const rec = this._touches.get(t.identifier);
     if (!rec) return;
     this._touches.delete(t.identifier);
-    if (rec.stick) { this.touch.active = false; this.touch.dx = 0; this.touch.dy = 0; }
-    else if (rec.btn) this.touch[rec.btn] = false;
-  }
-  _hitButton(x, y) {
-    for (const b of this.touchButtons) {
-      if (b.on === false) continue;   // a contextual button must not steal a DIG tap while it is hidden
-      const dx = x - b.x, dy = y - b.y;
-      if (dx * dx + dy * dy <= b.r * b.r) return b;
+    if (rec.tap) {
+      let another = false;
+      for (const r of this._touches.values()) if (r.tap) another = true;
+      if (!another) this.uiDown = false;
     }
-    return null;
+    if (rec.pad) {
+      // Only let go of the direction when no other finger is still on the pad.
+      let another = false;
+      for (const r of this._touches.values()) if (r.pad) another = true;
+      if (!another) { this.touch.active = false; this.touch.dx = 0; this.touch.dy = 0; }
+    } else if (rec.btn) {
+      this.touch[rec.btn] = false;
+    }
   }
 
   /** True only for a real keyboard edge on one of these codes — never a mouse or touch alias. */
@@ -151,6 +195,8 @@ export class Input {
     if (a === 'dig') return this.touch.dig || this.mdown;
     if (a === 'jump') return this.touch.jump;
     if (a === 'util') return this.touch.util || this.rdown;
+    if (a === 'sonar') return this.touch.sonar;
+    if (a === 'interact') return this.touch.use;
     return false;
   }
   pressed(a) {
@@ -159,10 +205,16 @@ export class Input {
     if (a === 'dig' && (this.mpressed || this.touch._pdig)) return true;
     if (a === 'jump' && this.touch._pjump) return true;
     if (a === 'util' && (this.rpressed || this.touch._putil)) return true;
+    if (a === 'sonar' && this.touch._psonar) return true;
+    if (a === 'dim' && this.touch._pdim) return true;
+    if (a === 'pause' && this.touch._ppause) return true;
     if (a === 'confirm' && (this.mpressed || this.touch._pdig || this.touch._ptap)) return true;
     if (a === 'interact' && (this.mpressed || this.touch._ptap || this.touch._puse)) return true;
     return false;
   }
+  /** A pointer held down anywhere, mouse or finger. Menus use this for hold-to-confirm. */
+  pointerHeld() { return this.mdown || this.uiDown; }
+
   released(a) {
     const keys = MAP[a];
     if (keys) for (const k of keys) if (this.releasedSet.has(k)) return true;
@@ -176,6 +228,7 @@ export class Input {
     this.anyPressed = false;
     this.mouseMoved = 0;
     this.touch._pdig = false; this.touch._pjump = false; this.touch._putil = false;
-    this.touch._ptap = false; this.touch._puse = false;
+    this.touch._ptap = false; this.touch._puse = false; this.touch._psonar = false;
+    this.touch._pdim = false; this.touch._ppause = false;
   }
 }

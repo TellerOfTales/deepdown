@@ -15,9 +15,10 @@ import { Camera } from './fx/camera.js';
 import { FX, fxStrike, fxBreak, fxShear, fxCollapse, fxValue, fxDiscovery, fxHollowPuff } from './fx/particles.js';
 import { audio } from './core/audio.js';
 import { Rand, clamp, damp, hashf } from './core/rng.js';
-import { UPGRADES, upgradeCost } from './ui/screens.js';
+import { UPGRADES, upgradeCost, depotLayout, deathLayout, pauseLayout } from './ui/screens.js';
 import * as SaveMod from './core/save.js';
 import { MAP } from './core/input.js';
+import { shaftLayout } from './ui/hud.js';
 
 export const RULES = {
   flecks:    { title: 'GOLD FLECKS', rule: 'Flecks thicken toward the seam. Dig where they crowd.' },
@@ -784,21 +785,39 @@ function updateTitle(G, dt, input) {
   }
 }
 
+const inRect = (r, x, y) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+
 function updatePause(G, dt, input) {
   if (input.pressed('pause') || input.pressed('cancel')) { G.mode = 'run'; G.abandonHold = 0; audio.ui('close'); return; }
+  // A touch player can reach the pause screen (the II button in the deck) but the deck is not
+  // drawn here, so RESUME has to be a target on the screen itself or they are stuck.
+  const PL = pauseLayout();
+  if (input.mpressed || input.touch._ptap) {
+    if (inRect(PL.resume, input.mx, input.my)) { G.mode = 'run'; G.abandonHold = 0; audio.ui('close'); return; }
+  }
   // Q fires the Extraction Beacon in-run (banks everything) and abandons the run here (loses
   // everything). A single tap must never be able to mean both, so abandoning is a HOLD.
-  if (input.held('abandon')) {
+  const holdingAbandon = input.held('abandon') ||
+    (input.pointerHeld() && inRect(PL.abandon, input.mx, input.my));
+  if (holdingAbandon) {
     G.abandonHold = (G.abandonHold || 0) + dt;
     if (G.abandonHold > 1.15) {
       G.abandonHold = 0;
       if (!G.deathRecorded) { G.deathRecorded = true; die(G, 'you turned back'); }
-      G.mode = 'death';
+      G.mode = 'death'; G.uiLock = 0.3;
     }
   } else G.abandonHold = 0;
 }
 
 function updateDeath(G, dt, input) {
+  if (G.uiLock > 0) return;
+  // On a pointer the two outcomes are two rects, because a tap has to mean the thing the
+  // player aimed at. DIG AGAIN is the big one; the Depot is the quiet line under it.
+  if (input.mpressed || input.touch._ptap) {
+    const DL = deathLayout();
+    if (inRect(DL.depot, input.mx, input.my)) { audio.ui('open'); G.mode = 'depot'; G.ui.sel = 0; G.uiLock = 0.3; return; }
+    audio.ui('confirm'); startRun(G); return;
+  }
   if (input.pressed('restart') || input.pressed('dig')) { audio.ui('confirm'); startRun(G); }
   else if (input.pressed('confirm')) { audio.ui('open'); G.mode = 'depot'; G.ui.sel = 0; G.uiLock = 0.3; }
 }
@@ -827,9 +846,11 @@ function updateDepot(G, dt, input) {
   // Hit-test instead: the descend bar plays, an upgrade row selects and buys.
   if (input.mpressed || input.touch._pdig || input.touch._ptap) {
     const mx = input.mx, my = input.my;
-    if (my >= VH - 36 && my <= VH - 10) { audio.ui('confirm'); startRun(G); return; }
-    const row = Math.floor((my - 42) / 13);
-    if (mx >= 8 && mx <= 280 && row >= 0 && row < UPGRADES.length) {
+    const D = depotLayout(G.ui.sel);
+    if (my >= D.barY && my <= D.barY + D.barH) { audio.ui('confirm'); startRun(G); return; }
+    const row = D.first + Math.floor((my - (D.ly - 2)) / D.rowH);
+    const inCol = mx >= D.lx - 2 && mx <= D.lx + D.lw + 2;
+    if (inCol && my >= D.ly - 2 && row >= D.first && row < D.first + D.view && row < UPGRADES.length) {
       if (row !== G.ui.sel) { G.ui.sel = row; audio.ui('move'); }
       else buy();
     }
@@ -1047,11 +1068,14 @@ function updateShaft(G, dt, input) {
   if (input.pressed('down') && G.strataIdx < last) { G.shaft.choice = 1; audio.ui('move'); }
   // Pointer: the two option panels drawn by hud.drawShaftPrompt. Tap to pick, tap again to
   // commit — a touch player otherwise has no way to end a run at all.
+  // The two option panels, hit-tested against the rects hud.js actually drew. Tap to pick,
+  // tap again to commit — a touch player otherwise has no way to end a run at all.
   if (input.mpressed || input.touch._ptap) {
     const mx = input.mx, my = input.my;
-    const oy = 24 + 74;
-    if (my >= oy && my <= oy + 54) {
-      const pick = mx < VW / 2 ? 0 : 1;
+    const Lo = shaftLayout();
+    const inRect = (r) => mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h;
+    const pick = inRect(Lo.a) ? 0 : inRect(Lo.b) ? 1 : -1;
+    if (pick >= 0) {
       if (pick === 1 && G.strataIdx >= last) { audio.ui('deny'); return; }
       if (pick !== G.shaft.choice) { G.shaft.choice = pick; audio.ui('move'); return; }
       confirmShaft(G);

@@ -1,4 +1,4 @@
-import { VW, VH, TS, CFG } from '../config.js';
+import { VIEW, TS, CFG } from '../config.js';
 import { clamp, damp } from '../core/rng.js';
 
 /**
@@ -32,8 +32,11 @@ export class Camera {
     const lookY = player.digDir[1] * 20 + clamp(player.vy * 0.10, -20, 34);
     this.leadX = damp(this.leadX, lookX, 3.4, dt);
     this.leadY = damp(this.leadY, lookY, 3.0, dt);
-    const targetX = player.x + this.leadX - VW / 2;
-    const targetY = player.y - player.h * 0.5 + this.leadY - VH / 2;
+    // Centred on the WORLD viewport, not the canvas: in portrait the bottom of the canvas is
+    // a control deck, and aiming the camera at the middle of that would park the player
+    // behind their own thumbs.
+    const targetX = player.x + this.leadX - VIEW.w / 2;
+    const targetY = player.y - player.h * 0.5 + this.leadY - VIEW.h / 2;
     this.tx = damp(this.tx, targetX, 9.5, dt);
     this.ty = damp(this.ty, targetY, 8.0, dt);
     this.clampTo(world);
@@ -43,7 +46,7 @@ export class Camera {
   }
 
   clampTo(world) {
-    const maxX = world.w * TS - VW, maxY = world.h * TS - VH;
+    const maxX = world.w * TS - VIEW.w, maxY = world.h * TS - VIEW.h;
     this.tx = maxX <= 0 ? maxX / 2 : clamp(this.tx, 0, maxX);
     this.ty = maxY <= 0 ? maxY / 2 : clamp(this.ty, 0, maxY);
   }
