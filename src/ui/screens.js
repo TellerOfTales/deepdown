@@ -24,9 +24,9 @@ export const UPGRADES = [
   { id: 'resonance', name: 'RESONANCE KIT',     desc: 'A struck wall shows you the hollow behind it.',   icon: 'ICON_SONAR',  max: 1, cost: 640,  step: 1 },
   { id: 'charges',   name: 'BLAST CHARGES',     desc: 'Two charges. Rock does not argue with them.',     icon: 'ICON_BOMB',   max: 3, cost: 380,  step: 1.8 },
   { id: 'sonar',     name: 'SONAR PULSE',       desc: 'One ping. Every seam and cavity, for a moment.',  icon: 'ICON_SONAR',  max: 2, cost: 720,  step: 2.2 },
-  { id: 'spikes',    name: 'CLIMBING SPIKES',   desc: 'Climb any wall you can reach.',                   icon: 'ICON_PICK',   max: 1, cost: 560,  step: 1 },
+  { id: 'spikes',    name: 'CLIMBING SPIKES',   desc: 'One wall is enough. Climb a cliff, not just a shaft.', icon: 'ICON_PICK',   max: 1, cost: 560,  step: 1 },
   { id: 'boots',     name: 'PADDED BOOTS',      desc: 'Fall further than you should.',                   icon: 'ICON_DEPTH',  max: 2, cost: 300,  step: 2.2 },
-  { id: 'beacon',    name: 'EXTRACTION BEACON', desc: 'Leave from anywhere. Once.',                      icon: 'ICON_COMBO',  max: 1, cost: 900,  step: 1 },
+  { id: 'beacon',    name: 'EXTRACTION BEACON', desc: 'One call a run is instant, and the winch waives its fee.', icon: 'ICON_COMBO',  max: 1, cost: 900,  step: 1 },
 ];
 
 export function upgradeCost(u, level) {
@@ -277,6 +277,7 @@ export function drawDepot(g, G, dt) {
       if (lr.deep && lr.extracted) text(g, 'BACK FROM THE EMBERDEEP', rx + 6, 88, { color: P.UI_GOLD });
       text(g, lr.depth + ' M', rx + rw - 6, 62, { color: P.UI_BONE, align: 'right' });
       text(g, (lr.extracted ? 'BANKED ' : 'AT ') + money(lr.value), rx + 6, 78, { color: lr.extracted ? P.UI_GOLD : P.UI_DARK });
+      if (lr.fee > 0) text(g, 'WINCH TOOK ' + money(lr.fee), rx + rw - 6, 78, { color: P.UI_DANGER, align: 'right' });
       const notes = (lr.learned || []).slice(-3);
       text(g, 'FIELD NOTES', rx + 6, lr.deep && lr.extracted ? 98 : 92, { color: P.UI_DIM });
       if (!notes.length) text(g, 'NOTHING NEW.', rx + 6, 102, { color: P.UI_DARK });
@@ -309,6 +310,7 @@ export function drawDepot(g, G, dt) {
         { color: lr.extracted ? P.UI_GOOD : P.UI_DANGER });
       text(g, lr.depth + ' M   ' + (lr.extracted ? 'BANKED ' : 'AT ') + money(lr.value),
         I.x + I.w - 2, iy + 1, { color: P.UI_BONE, align: 'right' });
+      if (lr.fee > 0) { iy += 10; text(g, 'THE WINCH TOOK ' + money(lr.fee), I.x + 2, iy, { color: P.UI_DANGER }); }
       iy += 11;
       const notes = (lr.learned || []).slice(stacked ? -3 : -1);
       for (const n of notes) {
@@ -536,9 +538,10 @@ export function drawPause(g, G, dt) {
 
   // Tell the player about the controls they actually have.
   const lines = G.touch ? [
-    'PAD          MOVE   AIM   CLIMB',
+    'PAD          MOVE   AIM   HOLD UP TO CLIMB',
     'DIG          HOLD FOR A HEAVY STRIKE',
     'JUMP         JUMP',
+    'OUT          HOLD - CALL THE WINCH, FOR A CUT',
     'BLAST        BLAST CHARGE',
     'PING         SONAR PULSE',
     'USE          THE SHAFT   THE LIFT',
@@ -551,6 +554,7 @@ export function drawPause(g, G, dt) {
     'L                 BLAST CHARGE',
     'V                 SONAR PULSE',
     'E                 THE SHAFT   THE LIFT',
+    'Q  (HOLD)         CALL THE WINCH - IT TAKES A CUT',
     'F                 DIM THE LANTERN (LASTS LONGER)',
     'TAB               FIELD JOURNAL (IN THE DEPOT)',
     'M                 MUTE',
@@ -570,14 +574,10 @@ export function drawPause(g, G, dt) {
   text(g, G.touch ? 'RESUME' : 'ESC  RESUME', cx, PL.resume.y + 6,
     { color: P.UI_GOOD, align: 'center', scale: 2 });
 
-  const hold = clamp((G.abandonHold || 0) / 1.15, 0, 1);
-  const abandonLabel = hold > 0 ? 'KEEP HOLDING...'
-    : (G.touch ? 'HOLD HERE  ABANDON RUN  (LOSE THE HAUL)' : 'HOLD Q  ABANDON RUN  (LOSE THE HAUL)');
-  text(g, abandonLabel, cx, PL.abandon.y + 4,
-    { color: P.UI_DANGER, align: 'center', maxWidth: VW - 12 });
-  if (hold > 0) {
-    const bw = Math.min(120, VW - 40);
-    g.fillStyle = P.UI_DARK; g.fillRect(cx - bw / 2, PL.abandon.y + 14, bw, 3);
-    g.fillStyle = P.UI_DANGER; g.fillRect(cx - bw / 2, PL.abandon.y + 14, Math.round(bw * hold), 3);
-  }
+  // The way out belongs on the screen a stuck player opens.
+  text(g, G.touch ? 'HOLD OUT ANYWHERE TO CALL THE WINCH UP'
+                  : 'HOLD Q ANYWHERE TO CALL THE WINCH UP',
+    cx, PL.abandon.y + 2, { color: P.UI_GOLD, align: 'center', maxWidth: VW - 12 });
+  text(g, 'IT TAKES A CUT OF THE HAUL - LESS NEAR THE RIG',
+    cx, PL.abandon.y + 12, { color: P.UI_DARK, align: 'center', maxWidth: VW - 12 });
 }

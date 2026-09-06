@@ -112,12 +112,27 @@ export class Player {
     }
   }
 
-  /** Is the player inside a 1-tile-wide vertical shaft they can brace against? */
+  /**
+   * Can the player brace against the walls here and climb?
+   *
+   * Bare-handed this needs rock on BOTH sides — you are wedging yourself in a chimney, not
+   * scaling a cliff — but it reaches two tiles out rather than one. That matters more than it
+   * sounds: a shaft dug by hand wanders, and on a touchscreen it wanders a lot. A player who
+   * drifts one tile sideways while digging down used to seal themselves in a hole they could
+   * not climb, with no warning that a two-wide shaft was a different thing from a one-wide one.
+   *
+   * CLIMBING SPIKES still buy what they say on the tin: one wall is enough, anywhere.
+   */
   inChimney(world) {
     const ty = Math.floor((this.y - this.h * 0.5) / TS);
-    const txl = Math.floor((this.x - this.w / 2 - 3) / TS);
-    const txr = Math.floor((this.x + this.w / 2 + 3) / TS);
-    const l = world.solid(txl, ty), r = world.solid(txr, ty);
+    const cx = Math.floor(this.x / TS);
+    // Standing inside rock is not standing in a shaft.
+    if (world.solid(cx, ty)) return false;
+    let l = false, r = false;
+    for (let d = 1; d <= 2 && !(l && r); d++) {
+      if (!l && world.solid(cx - d, ty)) l = true;
+      if (!r && world.solid(cx + d, ty)) r = true;
+    }
     if (!(this.spikes ? (l || r) : (l && r))) return false;
     // There must be somewhere to go, or standing in a dug corridor and aiming up would make
     // the miner hover instead of stand.

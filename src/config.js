@@ -93,6 +93,21 @@ export const CFG = {
   lightDrain: 0.50,        // per second
   lanternRadius: 9.4,      // tiles
   carryMax: 1100,          // "grams" — treasure has weight, wealth is literally a burden
+
+  // ── the winch line ───────────────────────────────────────────────────────────
+  // You can always leave. That is not a concession, it is what makes the descent a decision
+  // instead of a trap: GDD Pillar 3 wants wealth to create tension, and a player who is simply
+  // stuck feels no tension, only irritation.
+  //
+  // The price is a cut of the haul, so it scales with exactly the thing that is at stake.
+  // Carrying nothing, the winch is free — walking out empty-handed was never the hard part.
+  // Carrying a fortune from the far end of the map, it is expensive, and the walk back to the
+  // rig starts to look worth its risk. That is the decision the game is made of.
+  winchHold: 1.25,         // seconds of holding EXIT before the line drops
+  winchMinCut: 0.08,       // the fee at the rig's feet
+  winchMaxCut: 0.38,       // ...and at the far end of the map
+  winchFarTiles: 80,       // distance over which the fee climbs from min to max
+  winchWakeRadius: 190,    // the drum is loud: it wakes what is sleeping nearby
   toolMax: 100,
   toolWearTap: 0.15, toolWearHeavy: 0.55, toolWearHard: 0.55,
 

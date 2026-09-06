@@ -18,7 +18,10 @@ export const MAP = {
   pause:   ['Escape'],
   restart: ['KeyR'],
   dim:     ['KeyF'],
-  abandon: ['KeyQ'],
+  // Held in a run to call the winch line up. There is deliberately no key that discards a run:
+  // the winch always brings the haul home for a cut, so throwing it away was only ever
+  // something a player did by accident.
+  exfil:   ['KeyQ'],
   mute:    ['KeyM'],
   next:    ['Tab'],
 };
@@ -197,6 +200,7 @@ export class Input {
     if (a === 'util') return this.touch.util || this.rdown;
     if (a === 'sonar') return this.touch.sonar;
     if (a === 'interact') return this.touch.use;
+    if (a === 'exfil') return !!this.touch.exit;
     return false;
   }
   pressed(a) {

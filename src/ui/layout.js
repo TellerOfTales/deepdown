@@ -177,11 +177,27 @@ function buildControls(vw, vh, safe, scale, deckMode) {
     const stripY = top + edge + smR;
     const rowY = top + edge + smR * 2 + gap + rowR();
 
-    c.push({ id: 'dim', kind: 'btn', action: 'dim', label: 'DIM', x: L_ + smR, y: stripY, r: smR, ghost: true });
-    c.push({ id: 'pause', kind: 'btn', action: 'pause', label: 'II', x: L_ + smR * 3 + gap, y: stripY, r: smR, ghost: true });
-    c.push({ id: 'use', kind: 'btn', action: 'interact', label: 'USE', x: Rt - smR, y: stripY, r: smR, on: false });
-    c.push({ id: 'util', kind: 'btn', action: 'util', label: 'BLAST', x: Rt - smR * 3 - gap, y: stripY, r: smR });
-    c.push({ id: 'sonar', kind: 'btn', action: 'sonar', label: 'PING', x: Rt - smR * 5 - gap * 2, y: stripY, r: smR });
+    // Six fixed slots spread across the strip. Fixed, not packed: USE comes and goes with the
+    // rig, and a row that reshuffles under a thumb every time it appears is a row you cannot
+    // learn. OUT leads, because it is the button a stuck player is looking for.
+    const STRIP = [
+      { id: 'exit', action: 'exfil', label: 'OUT', exit: true },
+      { id: 'dim', action: 'dim', label: 'DIM', ghost: true },
+      { id: 'pause', action: 'pause', label: 'II', ghost: true },
+      { id: 'sonar', action: 'sonar', label: 'PING' },
+      { id: 'util', action: 'util', label: 'BLAST' },
+      { id: 'use', action: 'interact', label: 'USE', on: false },
+    ];
+    const span = Rt - L_;
+    const stripStep = span / STRIP.length;
+    // If the row will not fit at full size, the whole row shrinks together rather than
+    // letting two buttons share a pixel.
+    const fitR = Math.min(smR, Math.floor((stripStep - 3) / 2));
+    for (let i = 0; i < STRIP.length; i++) {
+      const b = STRIP[i];
+      c.push(Object.assign({ kind: 'btn', r: fitR, y: stripY,
+        x: Math.round(L_ + stripStep * (i + 0.5)) }, b));
+    }
 
     c.push({ id: 'pad', kind: 'pad', x: L_ + padR, y: rowY, r: padR, dead: R(PHYS.padDead) });
     c.push({ id: 'jump', kind: 'btn', action: 'jump', label: 'JUMP', x: Rt - digR * 2 - jumpR - gap, y: rowY, r: jumpR });
@@ -203,6 +219,7 @@ function buildControls(vw, vh, safe, scale, deckMode) {
     const utilY = Math.max(safe.t + edge + smR, padCY - padR - smR - gap);
     c.push({ id: 'dim', kind: 'btn', action: 'dim', label: 'DIM', x: L_ + smR, y: utilY, r: smR, ghost: true });
     c.push({ id: 'pause', kind: 'btn', action: 'pause', label: 'II', x: L_ + smR * 3 + gap, y: utilY, r: smR, ghost: true });
+    c.push({ id: 'exit', kind: 'btn', action: 'exfil', label: 'OUT', x: L_ + smR * 5 + gap * 2, y: utilY, r: smR, exit: true });
   }
   c.deck = deck;
   return c;

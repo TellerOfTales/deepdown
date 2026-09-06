@@ -96,6 +96,19 @@ for (const d of list) {
   }
   await page.screenshot({ path: join(OUT, d.id + '-3-dig.png') });
 
+  // The winch mid-call: the quote, the commitment bar, and the ring on the OUT button.
+  await page.evaluate(() => {
+    const G = window.G;
+    if (G.mode !== 'run') return;
+    G.haul = 2400; G.haulItems = { nugget: 4, relic: 1 }; G.weight = 500;
+    G.winch = 0.7; G.winchQuote = 512;
+    const c = window.__L.controls.find(c => c.id === 'exit');
+    if (c) window.__input.touch.exit = true;
+  });
+  await page.waitForTimeout(120);
+  await page.screenshot({ path: join(OUT, d.id + '-7-winch.png') });
+  await page.evaluate(() => { window.G.winch = 0; window.__input.touch.exit = false; });
+
   // The Depot, which is the densest screen in the game.
   await page.evaluate(() => { const G = window.G; G.bank = 42000; G.mode = 'depot'; G.ui.sel = 0; G.uiLock = 0; });
   await page.waitForTimeout(400);

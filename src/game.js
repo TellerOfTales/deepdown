@@ -16,9 +16,9 @@ import { FX, fxStrike, fxBreak, fxShear, fxCollapse, fxValue, fxDiscovery, fxHol
 import { audio } from './core/audio.js';
 import { Rand, clamp, damp, hashf } from './core/rng.js';
 import { UPGRADES, upgradeCost, depotLayout, deathLayout, pauseLayout } from './ui/screens.js';
+import { shaftLayout, money } from './ui/hud.js';
 import * as SaveMod from './core/save.js';
 import { MAP } from './core/input.js';
-import { shaftLayout } from './ui/hud.js';
 
 export const RULES = {
   flecks:    { title: 'GOLD FLECKS', rule: 'Flecks thicken toward the seam. Dig where they crowd.' },
@@ -75,7 +75,7 @@ export function newGame() {
     ui: { sel: 0, tab: 0, scroll: 0 },
     shaft: { open: false, choice: 1, near: null },
     flash: { color: '#ffffff', a: 0 },
-    vignette: 0, hitstop: 0, danger: 0, abandonHold: 0, uiLock: 0,
+    vignette: 0, hitstop: 0, danger: 0, uiLock: 0, winch: 0, winchQuote: 0,
     aim: null, deathCause: '', deathRecorded: false, lastRun: null,
     runStart: { tiles: 0, strikes: 0, crits: 0 },
     sonar: { t: 0, x: 0, y: 0, r: 0 },
@@ -150,7 +150,7 @@ export function startRun(G, seed) {
   // The whole feel layer, not just the simulation: dying inside a discovery hitstop and
   // hammering R used to start the next run at 3.5% speed under the last run's callout.
   G.hitstop = 0; G.flash.a = 0; G.callout = null; G.msgs.length = 0;
-  G.danger = 0; G.vignette = 0; G.bagWarned = 0; G.abandonHold = 0;
+  G.danger = 0; G.vignette = 0; G.bagWarned = 0; G.winch = 0; G.winchQuote = 0;
   G.sonar.t = 0; G.sonarMapped = false;
   const p = G.player;
   p.reset(0, 0);
@@ -199,13 +199,35 @@ export function enterStratum(G, idx) {
 
 function bigHaulRef(G) { return 900 * STRATA[Math.min(2, G.strataIdx + 1)].valueMul; }
 
-export function bankRun(G, reason) {
-  const amount = Math.round(G.haul);
+/**
+ * What the winch charges to lift you out from where you are standing.
+ *
+ * A cut of the haul, scaled by how far you are from the rig you could have walked to. Carrying
+ * nothing it is free; carrying a fortune from the far end of the map it is most of a stratum's
+ * profit. That is the point: the fee is not a punishment for being stuck, it is the price of
+ * not making the walk, and it is quoted before you commit to it.
+ */
+export function winchFee(G) {
+  if (!G.world || G.haul <= 0) return 0;
+  const p = G.player;
+  const rigs = [[G.world.shaftTX, G.world.shaftTY], [G.world.entryTX, G.world.entryTY]];
+  let best = Infinity;
+  for (const [tx, ty] of rigs) {
+    const d = Math.hypot(tx * TS + TS / 2 - p.x, (ty + 1) * TS - p.y) / TS;
+    if (d < best) best = d;
+  }
+  const t = clamp(best / CFG.winchFarTiles, 0, 1);
+  return Math.round(G.haul * (CFG.winchMinCut + (CFG.winchMaxCut - CFG.winchMinCut) * t));
+}
+
+export function bankRun(G, reason, fee) {
+  const cut = Math.max(0, Math.min(Math.round(fee || 0), Math.round(G.haul)));
+  const amount = Math.round(G.haul) - cut;
   G.bank += amount;
   G.stats.banked += amount;
   G.stats.deepest = Math.max(G.stats.deepest, G.runMaxDepth);
   G.lastRun = {
-    depth: G.runMaxDepth, value: amount, items: Object.assign({}, G.haulItems),
+    depth: G.runMaxDepth, value: amount, fee: cut, items: Object.assign({}, G.haulItems),
     learned: G.runLearned.slice(), time: G.runT, extracted: true, reason,
     tiles: (G.stats.tilesBroken | 0) - G.runStart.tiles,
     strikes: (G.stats.strikes | 0) - G.runStart.strikes,
@@ -792,25 +814,18 @@ function updateTitle(G, dt, input) {
 }
 
 function updatePause(G, dt, input) {
-  if (input.pressed('pause') || input.pressed('cancel')) { G.mode = 'run'; G.abandonHold = 0; audio.ui('close'); return; }
+  if (input.pressed('pause') || input.pressed('cancel')) { G.mode = 'run'; audio.ui('close'); return; }
   // A touch player can reach the pause screen (the II button in the deck) but the deck is not
   // drawn here, so RESUME has to be a target on the screen itself or they are stuck.
+  //
+  // There used to be a hold-to-abandon here that threw the haul away, on the same key that now
+  // calls the winch. Two opposite outcomes on one button is a trap, and the winch made the
+  // destructive one pointless: leaving costs at most a cut, so nobody ever needs to lose it all
+  // on purpose. Pausing is now only pausing.
   const PL = pauseLayout();
-  if (input.mpressed || input.touch._ptap) {
-    if (inRect(PL.resume, input.mx, input.my)) { G.mode = 'run'; G.abandonHold = 0; audio.ui('close'); return; }
+  if ((input.mpressed || input.touch._ptap) && inRect(PL.resume, input.mx, input.my)) {
+    G.mode = 'run'; audio.ui('close');
   }
-  // Q fires the Extraction Beacon in-run (banks everything) and abandons the run here (loses
-  // everything). A single tap must never be able to mean both, so abandoning is a HOLD.
-  const holdingAbandon = input.held('abandon') ||
-    (input.pointerHeld() && inRect(PL.abandon, input.mx, input.my));
-  if (holdingAbandon) {
-    G.abandonHold = (G.abandonHold || 0) + dt;
-    if (G.abandonHold > 1.15) {
-      G.abandonHold = 0;
-      if (!G.deathRecorded) { G.deathRecorded = true; die(G, 'you turned back'); }
-      G.mode = 'death'; G.uiLock = 0.3;
-    }
-  } else G.abandonHold = 0;
 }
 
 function updateDeath(G, dt, input) {
@@ -878,6 +893,20 @@ function updateRun(G, dt, input) {
       G.tutorialShown.beat = 1;
       msg(G, 'TAP AGAIN THE MOMENT THE PICK IS READY - LISTEN FOR THE CLICK', '#ffd867');
     }
+  }
+  // Two things a player has to be told, because neither is visible in the rock.
+  //
+  // The first is that a shaft you dug is a ladder: hold UP and you brace and climb. Nothing on
+  // screen says so, and a player who does not know it reads their own tunnel as a grave.
+  if (!G.tutorialShown.climb && G.depth > 6 && p.onGround === false && p.inChimney(world)) {
+    G.tutorialShown.climb = 1;
+    msg(G, G.touch ? 'HOLD UP ON THE PAD TO CLIMB A SHAFT' : 'HOLD UP TO CLIMB A SHAFT', '#7fd0f0');
+  }
+  // The second is that there is always a way out, and what it costs.
+  if (!G.tutorialShown.winch && G.haul > 0 && G.depth > 14) {
+    G.tutorialShown.winch = 1;
+    msg(G, G.touch ? 'HOLD OUT TO CALL THE WINCH - IT TAKES A CUT'
+                   : 'HOLD Q TO CALL THE WINCH - IT TAKES A CUT', '#ffcf8a');
   }
   if (p.tool <= 0 && !G.tutorialShown.blunt) {
     G.tutorialShown.blunt = 1;
@@ -1063,10 +1092,53 @@ function updateRun(G, dt, input) {
       audio.ui('open');
     }
   }
-  if (p.beacon && !p.beaconUsed && input.pressed('abandon') && !p.dead) {
+  updateWinch(G, dt, input);
+}
+
+/**
+ * The winch line: hold EXIT and the drum starts turning.
+ *
+ * The GDD's third pillar is that wealth creates tension, and a player who physically cannot get
+ * home feels no tension at all — only the flat certainty of having lost. So leaving is always
+ * possible, and the tension moves into what it costs. The Extraction Beacon, which used to be a
+ * one-shot free exit on a key nobody could press on a phone, is now what makes the first call of
+ * a run instant and free: the upgrade buys away the fee and the wind-up, not the possibility.
+ */
+function updateWinch(G, dt, input) {
+  const p = G.player;
+  if (p.dead) { G.winch = 0; G.winchQuote = 0; return; }
+  const held = input.held('exfil');
+
+  // The beacon is a single free, instant call. It fires on the press, not the hold, because
+  // that is what nine hundred gold bought.
+  if (p.beacon && !p.beaconUsed && input.pressed('exfil')) {
     p.beaconUsed = true;
-    bankRun(G, 'beacon');
-    msg(G, 'BEACON FIRED', '#7ff0a0');
+    G.winch = 0;
+    bankRun(G, 'beacon', 0);
+    msg(G, 'BEACON FIRED - NO FEE', '#7ff0a0');
+    return;
+  }
+
+  if (!held) {
+    if (G.winch > 0) audio.ui('close');
+    G.winch = 0; G.winchQuote = 0;
+    return;
+  }
+  if (G.winch === 0) audio.ui('open');
+  G.winch += dt;
+  // Requoted every frame, so walking toward the rig visibly makes the lift cheaper while you
+  // are still holding the button. That is the whole lesson of the mechanic, shown live.
+  G.winchQuote = winchFee(G);
+  // A winding drum is the loudest thing in the mine, and the game already has a channel for
+  // noise: the burrower comes to where your pick last landed, not to you. So the drum simply
+  // keeps re-sounding at your feet. Nothing dormant is forced awake by it — a mimic still gets
+  // to spring its own trap — but anything that hunts by sound now knows exactly where you are.
+  p.lastStrikeX = p.x; p.lastStrikeY = p.cy; p.lastStrikeT = 3.0;
+  if (G.winch >= CFG.winchHold) {
+    const fee = winchFee(G);
+    G.winch = 0;
+    bankRun(G, 'winch', fee);
+    msg(G, fee > 0 ? 'WINCH FEE ' + money(fee) : 'HAULED OUT', fee > 0 ? '#ffcf8a' : '#7ff0a0');
   }
 }
 

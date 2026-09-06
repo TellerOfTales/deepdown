@@ -1,5 +1,5 @@
-import { VW, VH, VIEW, SAFE, TS } from './config.js';
-import { newGame, update as gameUpdate } from './game.js';
+import { VW, VH, VIEW, SAFE, TS, CFG } from './config.js';
+import { newGame, update as gameUpdate, winchFee } from './game.js';
 import { Input } from './core/input.js';
 import { buildAtlas } from './art/tiletex.js';
 import { audio } from './core/audio.js';
@@ -167,6 +167,9 @@ function drawButton(b) {
   const dig = b.id === 'dig';
   const ready = dig && p && G.mode === 'run' && p.perfectOpen && !p.dead;
   const charging = dig && p && p.charge > 0.02;
+  // OUT fills as the drum winds, the same language as a charging heavy strike: a ring that
+  // completes is a thing you are committing to.
+  const winding = b.id === 'exit' && (G.winch || 0) > 0;
 
   g.save();
   // body
@@ -177,14 +180,17 @@ function drawButton(b) {
   // rim — the beat, under the thumb
   g.globalAlpha = 1;
   g.lineWidth = dig ? 2 : 1;
-  g.strokeStyle = ready ? P.UI_WHITE : down ? P.UI_GOLD : live ? P.UI_DIM : P.UI_DARK;
-  g.globalAlpha = ready ? 0.95 : b.ghost ? 0.35 : live ? 0.7 : 0.3;
+  g.strokeStyle = ready ? P.UI_WHITE : down ? P.UI_GOLD
+    : b.exit ? P.UI_GOOD : live ? P.UI_DIM : P.UI_DARK;
+  g.globalAlpha = ready ? 0.95 : b.exit ? 0.85 : b.ghost ? 0.35 : live ? 0.7 : 0.3;
   g.beginPath(); g.arc(b.x + 0.5, b.y + 0.5, b.r - 1, 0, Math.PI * 2); g.stroke();
 
-  if (charging) {
+  if (charging || winding) {
     // The heavy strike fills the rim as it charges, so a hold has a visible ceiling.
-    const f = clamp(p.charge, 0, 1);
-    g.globalAlpha = 0.9; g.strokeStyle = f >= 1 ? P.UI_GOLD : P.MAG4; g.lineWidth = 3;
+    const f = winding ? clamp(G.winch / CFG.winchHold, 0, 1) : clamp(p.charge, 0, 1);
+    g.globalAlpha = 0.9;
+    g.strokeStyle = winding ? P.UI_GOOD : f >= 1 ? P.UI_GOLD : P.MAG4;
+    g.lineWidth = 3;
     g.beginPath();
     g.arc(b.x + 0.5, b.y + 0.5, b.r - 2.5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * f);
     g.stroke();
@@ -341,3 +347,4 @@ window.__overlaps = overlaps;
 window.__input = input;
 window.__shaftLayout = shaftLayout;
 window.__depotLayout = depotLayout;
+window.__winchFee = winchFee;

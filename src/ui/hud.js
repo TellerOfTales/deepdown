@@ -163,7 +163,7 @@ export function drawHUD(g, G, dt) {
     drawSprite(g, SP.ICON_SONAR, frameAt(SP.ICON_SONAR, H.t), cx, toolY, null);
     text(g, String(p.charges.sonar), cx + 11, toolY + 4, { color: P.UI_BONE }); cx += 20;
   }
-  if (p.beacon && !p.beaconUsed) text(g, touch ? 'BEACON' : 'Q BEACON', cx, toolY + 4, { color: P.UI_GOOD });
+  if (p.beacon && !p.beaconUsed) text(g, 'BEACON', cx, toolY + 4, { color: P.UI_GOOD });
 
   // ── AT RISK — the emotional centre of the screen ──────────────────────────
   const ref = 900 * STRATA[Math.min(STRATA.length - 1, G.strataIdx + 1)].valueMul;
@@ -220,9 +220,46 @@ export function drawHUD(g, G, dt) {
     }
   }
 
+  drawWinch(g, G);
   drawMessages(g, G);
   drawCallout(g, G);
   if (crit) darkEdges(g, 0.35 + Math.sin(H.t * 3) * 0.08);
+}
+
+/**
+ * The winch, while the drum is turning.
+ *
+ * The fee is quoted before it is charged. A price you find out about afterwards is a punishment;
+ * a price you watch climb while you decide is a mechanic — and letting go costs nothing, so the
+ * quote is also how a player learns that walking back to the rig is worth something.
+ */
+function drawWinch(g, G) {
+  const t = G.winch || 0;
+  if (t <= 0) return;
+  const f = clamp(t / CFG.winchHold, 0, 1);
+  const cx = VIEW.x + VIEW.w / 2, cy = VIEW.y + Math.round(VIEW.h * 0.38);
+  const w = Math.min(VIEW.w - 24, 190), x = Math.round(cx - w / 2);
+
+  g.save();
+  g.globalAlpha = 0.86; g.fillStyle = P.INK;
+  g.fillRect(x, cy - 16, w, 46);
+  g.globalAlpha = 1;
+  g.strokeStyle = P.UI_GOLD; g.strokeRect(x + 0.5, cy - 15.5, w - 1, 45);
+  g.restore();
+
+  text(g, 'CALLING THE WINCH', cx, cy - 12, { color: P.UI_DIM, align: 'center' });
+  const fee = G.winchQuote | 0;
+  if (fee > 0) {
+    text(g, '-' + money(fee), cx, cy - 2, { color: P.UI_DANGER, align: 'center', scale: 2, shadow: true });
+  } else {
+    text(g, G.haul > 0 ? 'NO FEE' : 'NOTHING TO LOSE', cx, cy - 2,
+      { color: P.UI_GOOD, align: 'center', scale: 2, shadow: true });
+  }
+  // The bar is the commitment. Let go and it is gone.
+  g.fillStyle = P.UI_DARK; g.fillRect(x + 6, cy + 14, w - 12, 4);
+  g.fillStyle = f >= 1 ? P.UI_GOOD : P.UI_GOLD;
+  g.fillRect(x + 6, cy + 14, Math.round((w - 12) * f), 4);
+  text(g, 'LET GO TO STAY', cx, cy + 21, { color: P.UI_DIM, align: 'center', alpha: 0.85 });
 }
 
 function darkEdges(g, amt) {
