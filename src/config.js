@@ -63,7 +63,7 @@ export const CFG = {
   lightMax: 100,
   lightDrain: 0.78,        // per second
   lanternRadius: 7.4,      // tiles
-  carryMax: 900,           // "grams" — treasure has weight, wealth is literally a burden
+  carryMax: 1100,           // "grams" — treasure has weight, wealth is literally a burden
   toolMax: 100,
   toolWearTap: 0.10, toolWearHeavy: 0.42, toolWearHard: 0.55,
 
@@ -76,7 +76,9 @@ export const CFG = {
   knockback: 130,
 };
 
-export const WEIGHT = { nugget: 34, gem: 62, shard: 12, bone: 20, relic: 130, oil: 0 };
+// Value per gram is the whole inventory decision: relics 4.3, gems 2.75, shards 1.6,
+// nuggets 1.35, bones 1.1. Wealth is literally a burden, and the good stuff is dense.
+export const WEIGHT = { nugget: 34, gem: 60, shard: 14, bone: 8, relic: 120, oil: 0 };
 
 /** Depth (m) -> stratum index. */
 export const COLORS_RISK = ['#8a8496', '#d8d2c4', '#ffd867', '#ff9b2e', '#ff5a4a'];

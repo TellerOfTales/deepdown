@@ -1,0 +1,33 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#1e1b26}canvas{image-rendering:pixelated}</style></head>
+<body><canvas id="c" width="440" height="260" style="width:1320px;height:780px"></canvas>
+<script type="module">
+import * as PL from '../src/art/sprites_player.js';
+import { drawSprite, bake } from '../src/art/spritesheet.js';
+import * as F from '../src/art/font.js'; import {P} from '../src/art/pal.js';
+const g=document.getElementById('c').getContext('2d'); g.imageSmoothingEnabled=false;
+g.fillStyle='#1e1b26';g.fillRect(0,0,440,260);
+const sets=[['MINER_IDLE','MINER_WALK'],['MINER_DIG_SIDE','MINER_DIG_DOWN'],['MINER_DIG_UP','MINER_CHARGE','MINER_CLIMB'],['MINER_JUMP','MINER_FALL','MINER_LAND','MINER_HURT','MINER_DEAD']];
+let y=4;
+for(const row of sets){
+  let x=4;
+  for(const name of row){
+    const spr=PL[name];
+    if(!spr){F.text(g,'MISSING '+name,x,y,{color:'#f55'});x+=90;continue;}
+    const b=bake(spr);
+    F.text(g,name.replace('MINER_',''),x,y,{color:P.UI_DIM});
+    for(let f=0;f<b.count;f++){
+      g.fillStyle=(f%2)?'#2f2b3a':'#221f2b'; g.fillRect(x+f*(b.w+1),y+8,b.w,b.h);
+      drawSprite(g,spr,f,x+f*(b.w+1)+b.ox,y+8+b.oy,null);
+    }
+    x+=b.count*(b.w+1)+10;
+  }
+  y+=44;
+}
+F.text(g,'MIRRORED + FLASH + ON TILES',4,y,{color:P.UI_DIM}); y+=9;
+for(let i=0;i<4;i++){ g.fillStyle=i%2?'#4a2d1c':'#3c3847'; g.fillRect(4+i*30,y,30,32); }
+drawSprite(g,PL.MINER_DIG_SIDE,1,20,y+30,{flip:true});
+drawSprite(g,PL.MINER_DIG_SIDE,1,50,y+30,null);
+drawSprite(g,PL.MINER_IDLE,0,80,y+30,{flash:0.8});
+drawSprite(g,PL.MINER_WALK,2,110,y+30,null);
+console.log('PLAYER OK', Object.keys(PL).join(','));
+</script></body></html>

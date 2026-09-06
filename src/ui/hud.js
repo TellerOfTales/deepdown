@@ -9,12 +9,12 @@ import * as SP from '../art/sprites_props.js';
 import { P } from '../art/pal.js';
 import { CFG, VW, VH, TS, COLORS_RISK } from '../config.js';
 import { STRATA, TILES, T } from '../world/tiles.js';
-import { clamp, lerp, damp } from '../core/rng.js';
+import { clamp, damp } from '../core/rng.js';
 
 // HUD-local animation state. game.js owns G; this module owns only how the HUD moves.
 const H = {
   depth: 0, haul: 0, weight: 0, light: 1, tool: 1,
-  bestFlash: 0, bagShake: 0, comboScale: 1, t: 0, lastBest: 0, riskPulse: 0,
+  bestFlash: 0, bagShake: 0, t: 0, lastBest: 0,
 };
 
 export function hudUpdate(G, dt) {
@@ -26,7 +26,6 @@ export function hudUpdate(G, dt) {
   H.weight = damp(H.weight, G.weight, 10, dt);
   H.light = damp(H.light, p.light / p.lightMax, 12, dt);
   H.tool = damp(H.tool, p.tool / p.toolMax, 12, dt);
-  H.comboScale = damp(H.comboScale, 1, 9, dt);
   H.bestFlash = Math.max(0, H.bestFlash - dt * 1.6);
   H.bagShake = Math.max(0, H.bagShake - dt * 3);
   if (G.stats && G.runMaxDepth > H.lastBest && G.runMaxDepth > (G.stats.deepest | 0)) {
@@ -115,10 +114,11 @@ export function drawHUD(g, G, dt) {
   const ref = 900 * STRATA[Math.min(STRATA.length - 1, G.strataIdx + 1)].valueMul;
   const frac = clamp(G.haul / ref, 0, 1);
   const col = riskColor(frac);
-  const pulse = frac > 0.55 ? 1 + Math.sin(H.t * (2.2 + frac * 3)) * 0.06 * frac : 1;
+  // A heartbeat, not a size jump: the number swells in brightness as the haul grows, so the
+  // player feels the stake rising without the layout twitching.
+  const beat = frac > 0.5 ? 0.78 + Math.abs(Math.sin(H.t * (1.6 + frac * 2.6))) * 0.22 * frac : 1;
   text(g, 'AT RISK', VW - 6, VH - 34, { color: P.UI_DIM, align: 'right' });
-  const scale = frac > 0.55 && pulse > 1.02 ? 3 : 2;
-  text(g, money(G.haul), VW - 6, VH - 27, { color: col, align: 'right', scale: 2, shadow: true });
+  text(g, money(G.haul), VW - 6, VH - 27, { color: col, align: 'right', scale: 2, shadow: true, alpha: beat });
   const wfrac = G.weight / p.carryMax;
   const full = wfrac >= 0.999;
   const shake = full ? Math.round(Math.sin(H.t * 30) * 1) : 0;

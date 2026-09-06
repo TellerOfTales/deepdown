@@ -18,7 +18,7 @@ export class Loot {
     const spd = 40 + (rand ? rand.f(0, 55) : 20);
     o.vx = (dirX || 0) * -22 + a * spd;
     o.vy = -50 - (rand ? rand.f(0, 60) : 30) + (dirY || 0) * -14;
-    o.t = 0; o.mag = 0; o.dead = false; o.rest = 0;
+    o.t = 0; o.mag = 0; o.dead = false; o.rest = 0; o.reject = 0;
     o.spin = rand ? rand.f(0, 6) : 0;
     this.list.push(o);
     return o;
@@ -34,8 +34,8 @@ export class Loot {
       const dx = px - o.x, dy = py - o.y;
       const d2 = dx * dx + dy * dy;
 
-      const canCarry = ctx.weight + (WEIGHT[o.kind] || 0) <= player.carryMax;
-      if (o.t > 0.22 && canCarry && d2 < CFG.magnetRadius * CFG.magnetRadius) {
+      if (o.reject > 0) o.reject -= dt;
+      if (o.t > 0.22 && o.reject <= 0 && d2 < CFG.magnetRadius * CFG.magnetRadius) {
         const d = Math.max(1, Math.sqrt(d2));
         const pull = CFG.magnetForce * (1 - d / CFG.magnetRadius) * dt;
         o.vx += dx / d * pull; o.vy += dy / d * pull;
@@ -58,9 +58,14 @@ export class Loot {
       }
       o.x = nx; o.y = ny;
 
-      if (d2 < CFG.pickupRadius * CFG.pickupRadius && o.t > 0.14) {
-        if (canCarry || o.kind === 'oil') { ctx.collect(o); this.pool.push(o); this.list.splice(i, 1); }
-        else if (!ctx.bagWarned) ctx.onBagFull();
+      if (d2 < CFG.pickupRadius * CFG.pickupRadius && o.t > 0.14 && o.reject <= 0) {
+        if (ctx.collect(o)) { this.pool.push(o); this.list.splice(i, 1); }
+        else {
+          // Refused. Push it clear and give it a cooling-off period so it does not nag.
+          o.reject = 1.6;
+          o.vx = -dx * 1.6; o.vy = -Math.abs(dy) * 1.2 - 60;
+          o.mag = 0;
+        }
       }
     }
   }

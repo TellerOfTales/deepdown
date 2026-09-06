@@ -60,7 +60,7 @@ export function newGame() {
     fx: new FX(), loot: new Loot(), audio,
     enemies: [], bombs: [], veinHints: [],
     strataIdx: 0, depth: 0, maxDepth: 0, runMaxDepth: 0,
-    haul: 0, haulItems: {}, weight: 0,
+    haul: 0, haulItems: {}, weight: 0, carried: [],
     bank: s.bank, seed: 1,
     msgs: [], callout: null,
     journal: RELICS.map(r => ({ id: r[0], name: r[1], blurb: r[2], depth: 0, found: s.journal.includes(r[0]) })),
@@ -126,7 +126,7 @@ export function applyUpgrades(G) {
 export function startRun(G, seed) {
   G.seed = seed || ((G.t * 1000) | 0) ^ (G.stats.runs * 2654435761) ^ 0x9e3779b9;
   G.rand = new Rand(G.seed);
-  G.haul = 0; G.haulItems = {}; G.weight = 0;
+  G.haul = 0; G.haulItems = {}; G.weight = 0; G.carried.length = 0;
   G.runT = 0; G.runMaxDepth = 0; G.runLearned = [];
   G.strataIdx = 0;
   G.stats.runs++;
@@ -184,9 +184,17 @@ export function bankRun(G, reason) {
     learned: G.runLearned.slice(), time: G.runT, extracted: true, reason,
   };
   audio.bank(amount);
-  G.haul = 0; G.haulItems = {}; G.weight = 0;
+  G.haul = 0; G.haulItems = {}; G.weight = 0; G.carried.length = 0;
   G.mode = 'depot';
+  // Land the cursor on something the player could not afford before this run. The Depot should
+  // open on a new possibility, not on row one.
   G.ui.sel = 0;
+  for (let i = 0; i < UPGRADES.length; i++) {
+    const u = UPGRADES[i], l = lvl(G, u.id);
+    if (l >= u.max) continue;
+    const c = upgradeCost(u, l);
+    if (c <= G.bank && c > G.bank - amount) { G.ui.sel = i; break; }
+  }
   SaveMod.save(G);
 }
 
@@ -228,9 +236,53 @@ function cavitySize(world, tx, ty, cap) {
 }
 
 function addHaul(G, kind, value) {
+  const w = WEIGHT[kind] || 0;
+  G.carried.push({ kind, value, w });
   G.haul += value;
   G.haulItems[kind] = (G.haulItems[kind] | 0) + 1;
-  G.weight += WEIGHT[kind] || 0;
+  G.weight += w;
+}
+
+function dropWorst(G) {
+  let worst = -1, worstRatio = Infinity;
+  for (let i = 0; i < G.carried.length; i++) {
+    const c = G.carried[i];
+    const r = c.w <= 0 ? Infinity : c.value / c.w;
+    if (r < worstRatio) { worstRatio = r; worst = i; }
+  }
+  if (worst < 0) return null;
+  const c = G.carried.splice(worst, 1)[0];
+  G.haul -= c.value;
+  G.weight -= c.w;
+  G.haulItems[c.kind] = Math.max(0, (G.haulItems[c.kind] | 0) - 1);
+  return c;
+}
+
+/**
+ * The bag is the tension (GDD §8: "Success gradually creates the central tension"). Once it is
+ * full, a better find does not bounce off you — it costs you the worst thing you are carrying.
+ * That keeps descending meaningful at capacity and turns every late pickup into a small trade.
+ */
+function tryTake(G, kind, value, x, y) {
+  const p = G.player;
+  const w = WEIGHT[kind] || 0;
+  if (G.weight + w <= p.carryMax) { addHaul(G, kind, value); return true; }
+  const incoming = w <= 0 ? Infinity : value / w;
+  let best = Infinity;
+  for (const c of G.carried) { const r = c.w <= 0 ? Infinity : c.value / c.w; if (r < best) best = r; }
+  if (incoming <= best) return false;
+  const dropped = [];
+  let guard = 0;
+  while (G.weight + w > p.carryMax && G.carried.length && guard++ < 24) {
+    const d = dropWorst(G);
+    if (!d) break;
+    dropped.push(d);
+  }
+  addHaul(G, kind, value);
+  for (const d of dropped) G.loot.spawn(x, y, d.kind, d.value, G.rand, 0, 0).reject = 2.2;
+  msg(G, 'MADE ROOM - DROPPED ' + dropped.map(d => d.kind.toUpperCase()).join(' '), '#ff9b2e');
+  audio.ui('deny');
+  return true;
 }
 
 function veinHint(G, tx, ty) {
@@ -246,10 +298,41 @@ function veinHint(G, tx, ty) {
   }
 }
 
+/**
+ * The pick is the primary weapon (GDD §11) — the same swing that opens rock opens creatures.
+ * The swing sweeps the whole face in front of the miner, which is why a sideways strike can
+ * catch a crawler that just landed next to you without any separate attack input.
+ */
+function strikeEnemies(G, info) {
+  const dmg = info.damage * 1.6;
+  const rects = [[info.tx * TS - 3, info.ty * TS - 3, TS + 6, TS + 6]];
+  if (info.second >= 0) rects.push([info.tx * TS - 3, info.second * TS - 3, TS + 6, TS + 6]);
+  let hitAny = false;
+  const ectx = enemyCtx(G);
+  for (const e of G.enemies) {
+    if (e.dead || isGone(e)) continue;
+    const ex = e.x - e.w / 2, ey = e.y - e.h;
+    for (const r of rects) {
+      if (ex < r[0] + r[2] && ex + e.w > r[0] && ey < r[1] + r[3] && ey + e.h > r[1]) {
+        Enemies.hurt(e, dmg, info.dx, info.dy, ectx);
+        hitAny = true;
+        break;
+      }
+    }
+  }
+  if (hitAny) {
+    G.hitstop = Math.max(G.hitstop, info.crit ? 0.07 : 0.04);
+    G.cam.addShake(info.crit ? 2.4 : 1.4);
+    G.cam.punch(info.dx, info.dy, CFG.camPunch);
+  }
+  return hitAny;
+}
+
 export function resolveStrike(G, info) {
   const world = G.world, p = G.player, fx = G.fx;
   G.stats.strikes++;
   if (info.crit) G.stats.crits++;
+  const hitCreature = strikeEnemies(G, info);
 
   const target = world.get(info.tx, info.ty);
   const tinfo = TILES[target];
@@ -289,7 +372,7 @@ export function resolveStrike(G, info) {
         }
         learn(G, 'granite');
       }
-    } else if (target === T.AIR) {
+    } else if (target === T.AIR && !hitCreature) {
       audio.strike('dirt', { power: 0 });
       fx.dust(hx, hy, '#4f4759', 2);
     }
@@ -428,6 +511,8 @@ function foundRelic(G, x, y) {
   G.fx.ring(x, y, '#ffd867', { r: 40, life: 0.7 });
   G.fx.ring(x, y, '#e6ccff', { r: 26, life: 0.5 });
   G.runLearned.push('RECOVERED: ' + entry.name);
+  const gap = G.journal.filter(j => !j.found).length;
+  if (gap > 0) msg(G, 'THE ARCHIVE HAS ' + gap + ' EMPTY SHELVES LEFT', '#8a8496');
 }
 
 // ── utilities (bombs / sonar) ─────────────────────────────────────────────────
@@ -599,6 +684,19 @@ function updateRun(G, dt, input) {
   G.runT += dt;
   G.mouseWorld = { x: input.mx + G.cam.ix, y: input.my + G.cam.iy };
 
+  if (p.tool <= 0 && !G.tutorialShown.blunt) {
+    G.tutorialShown.blunt = 1;
+    msg(G, 'THE PICK IS BLUNT - THE SHAFT HOUSE HAS A GRINDING WHEEL', '#ff9b2e');
+  }
+  if (p.light <= 0 && !G.tutorialShown.dark) {
+    G.tutorialShown.dark = 1;
+    msg(G, 'THE LANTERN IS OUT', '#ff5a4a');
+    audio.danger('lowlight');
+  } else if (p.light < p.lightMax * 0.2 && !G.tutorialShown.lowlight) {
+    G.tutorialShown.lowlight = 1;
+    msg(G, 'THE LANTERN IS GOING - GLOWCAPS BURN CLEAN', '#ffcf8a');
+  }
+
   // Air moves toward the shaft. Rather than draw an arrow on the HUD, we let the player feel a
   // draft: motes drift in the direction of the way down. GDD §7 lists airflow as a real clue, so
   // this is the same grammar being used for navigation instead of for treasure.
@@ -664,12 +762,19 @@ function updateRun(G, dt, input) {
 
   G.loot.update(dt, world, p, {
     weight: G.weight,
-    bagWarned: G.t - G.bagWarned < 2.4,
     collect: (o) => {
       if (o.kind === 'oil') {
         p.refillLight(28); audio.pickup('oil', 0);
         G.fx.popup(o.x, o.y, '+LIGHT', '#ffcf8a', {});
-        return;
+        return true;
+      }
+      if (!tryTake(G, o.kind, o.value, o.x, o.y)) {
+        if (G.t - G.bagWarned > 3) {
+          G.bagWarned = G.t;
+          msg(G, 'BAG FULL - THAT IS NOT WORTH WHAT YOU ARE CARRYING', '#ff5a4a');
+          audio.danger('bagfull');
+        }
+        return false;
       }
       if (!G.tutorialShown.firstOre) {
         G.tutorialShown.firstOre = 1;
@@ -677,15 +782,10 @@ function updateRun(G, dt, input) {
       }
       p.pickupStreak = Math.min(24, p.pickupStreak + 1);
       p.pickupStreakT = 1.2;
-      addHaul(G, o.kind, o.value);
       audio.pickup(o.kind, p.pickupStreak);
       fxValue(G.fx, o.x, o.y, o.value, o.kind === 'relic' ? '#e8b878' : o.kind === 'gem' ? '#b07ff0' : '#ffd867');
       if (o.kind === 'relic') G.cam.addShake(2);
-    },
-    onBagFull: () => {
-      G.bagWarned = G.t;
-      msg(G, 'BAG FULL - EXTRACT OR DROP SOMETHING', '#ff5a4a');
-      audio.danger('bagfull');
+      return true;
     },
   });
 

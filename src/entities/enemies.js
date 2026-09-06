@@ -414,7 +414,8 @@ export function draw(g, e, camX, camY) {
   const spr = art(e.type, e.state === 'idle' ? 'move' : e.state);
   if (!spr) return;
   const x = Math.round(e.x - camX);
-  const y = Math.round(e.y - camY);
+  // Flying creatures are authored centre-anchored; ground creatures anchor at the feet.
+  const y = Math.round(e.y - camY - (e.type === 'glowmoth' ? e.h / 2 : 0));
   const dying = e.dead ? clamp(1 - e.deadT / 0.55, 0, 1) : 1;
   drawSprite(g, spr, frameAt(spr, e.t), x, y, {
     flip: e.facing < 0, flash: e.hitFlash, alpha: dying,
