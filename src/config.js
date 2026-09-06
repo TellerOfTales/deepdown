@@ -60,12 +60,15 @@ export const CFG = {
 
   // ── resources ────────────────────────────────────────────────────────────────
   maxHealth: 5,
-  lightMax: 100,
-  lightDrain: 0.78,        // per second
+  // 120 units at 0.50/s is four minutes of light on a full lantern — roughly one thorough
+  // stratum. Reaching the third one means finding glowcaps, dimming the lamp (which halves the
+  // drain), or buying Oil Reserve. The lantern is the expedition clock (GDD §8).
+  lightMax: 120,
+  lightDrain: 0.50,        // per second
   lanternRadius: 9.4,      // tiles
-  carryMax: 1100,           // "grams" — treasure has weight, wealth is literally a burden
+  carryMax: 1100,          // "grams" — treasure has weight, wealth is literally a burden
   toolMax: 100,
-  toolWearTap: 0.10, toolWearHeavy: 0.42, toolWearHard: 0.55,
+  toolWearTap: 0.15, toolWearHeavy: 0.55, toolWearHard: 0.55,
 
   // ── loot ─────────────────────────────────────────────────────────────────────
   magnetRadius: 34, magnetForce: 500, pickupRadius: 9,

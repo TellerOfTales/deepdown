@@ -86,8 +86,8 @@ export function newGame() {
 
 // ── messages & callouts ───────────────────────────────────────────────────────
 export function msg(G, text, color) {
-  G.msgs.push({ text, color: color || '#d8d2c4', t: 0, life: 3.1 });
-  if (G.msgs.length > 5) G.msgs.shift();
+  G.msgs.push({ text, color: color || '#d8d2c4', t: 0, life: 2.7 });
+  if (G.msgs.length > 4) G.msgs.shift();
 }
 export function callout(G, title, sub, color, tier) {
   G.callout = { title, sub: sub || '', color: color || '#ffd867', t: 0, life: tier >= 3 ? 3.4 : 2.5, tier: tier || 1 };
@@ -142,7 +142,6 @@ export function startRun(G, seed) {
   enterStratum(G, 0);
   G.mode = 'run';
   audio.ambient(0);
-  msg(G, 'STRATUM I - ' + STRATA[0].name, '#d8d2c4');
   if (G.world.hint) msg(G, G.world.hint, '#8a8496');
 }
 
@@ -353,6 +352,10 @@ export function resolveStrike(G, info) {
   const [cx, cy] = tileCentre(info.tx, info.ty);
   const hx = info.handX, hy = info.handY;
 
+  // Read the clue off the face BEFORE the pick removes it.
+  const seedDeco = world.getDeco(info.tx, info.ty);
+  const seedDeco2 = info.second >= 0 ? world.getDeco(info.tx, info.second) : 0;
+
   const res = world.strike(info.tx, info.ty, info.power, info.damage, { crit: info.crit });
 
   // A sideways swing goes through the WHOLE face in front of you, not one tile of it: the second
@@ -361,7 +364,7 @@ export function resolveStrike(G, info) {
   if (info.second >= 0 && info.dy === 0) {
     const r2 = world.strike(info.tx, info.second, info.power, info.damage * CFG.sideSpill, { crit: info.crit });
     if (r2.broke && r2.broken && r2.broken.length) {
-      handleBreaks(G, r2.broken, { tx: info.tx, ty: info.second, dx: info.dx, dy: 0, crit: info.crit, combo: info.combo }, false);
+      handleBreaks(G, r2.broken, { tx: info.tx, ty: info.second, dx: info.dx, dy: 0, crit: info.crit, combo: info.combo }, false, seedDeco2);
     }
   }
 
@@ -413,13 +416,13 @@ export function resolveStrike(G, info) {
   if (!res.broke) return;
 
   // --- the POP ---
-  handleBreaks(G, res.broken, info, hollow);
+  handleBreaks(G, res.broken, info, hollow, seedDeco);
 }
 
-function handleBreaks(G, broken, info, hollow) {
+function handleBreaks(G, broken, info, hollow, seedDeco) {
   const world = G.world, p = G.player, fx = G.fx;
   let valueGained = 0, best = null, shear = 0, chain = 0;
-  const seedDeco = world.getDeco(info.tx, info.ty);
+  seedDeco = seedDeco || 0;
 
   for (const b of broken) {
     const bi = TILES[b.tile];
@@ -461,12 +464,34 @@ function handleBreaks(G, broken, info, hollow) {
   if (chain >= 2) learn(G, 'chain');
 
   // --- prediction pays better than luck (GDD §13) ---
-  if (valueGained > 0) {
-    const predicted = seedDeco === D.FLECK_RICH || seedDeco === D.GEMGLINT;
-    if (predicted) {
+  //
+  // The moment this exists for: the player read a fleck halo, committed to a direction, and the
+  // face they broke opened onto the seam it promised. Ore tiles carry no flecks themselves, so
+  // the test has to be "did this break EXPOSE ore", not "did this break yield ore" — otherwise
+  // the flagship rule of the whole game is unlearnable.
+  const fleckSeed = seedDeco === D.FLECK_RICH || seedDeco === D.FLECK_FAINT || seedDeco === D.GEMGLINT;
+  if (fleckSeed) {
+    let exposed = 0, sawMimic = false;
+    for (const b of broken) {
+      for (const dxy of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const t = world.get(b.tx + dxy[0], b.ty + dxy[1]);
+        if (t === T.ORE_GOLD || t === T.ORE_GEM || t === T.CRYSTAL || t === T.RELIC) exposed++;
+        else if (t === T.MIMIC) sawMimic = true;
+      }
+    }
+    if (exposed > 0 || valueGained > 0) {
+      const first = !G.discoveries.has('flecks');
       learn(G, 'flecks');
-      fx.ring(info.tx * TS + TS / 2, info.ty * TS + TS / 2, '#ffd867', { r: 26, life: 0.4 });
-      G.cam.addShake(1.6);
+      const cx = info.tx * TS + TS / 2, cy = info.ty * TS + TS / 2;
+      fx.ring(cx, cy, '#ffd867', { r: 26, life: 0.4 });
+      fx.ring(cx, cy, '#fff3c0', { r: 14, life: 0.26 });
+      fx.glint(cx, cy, '#fff3c0');
+      G.cam.addShake(2.2);
+      G.hitstop = Math.max(G.hitstop, 0.07);
+      audio.discovery(1);
+      if (!first) fx.popup(cx, cy - 12, 'CALLED IT', '#ffd867', { scale: 1, life: 1.0 });
+    } else if (sawMimic) {
+      learn(G, 'mimic');
     }
   }
 
@@ -559,7 +584,7 @@ function updateBombs(G, dt) {
       if (!TILES[G.world.get(tx, ty)].diggable) continue;
       G.world.breakAt(tx, ty, 'collapse', 2, false, broken, 0);
     }
-    handleBreaks(G, broken, { tx: ctx.tx, ty: ctx.ty, dx: 0, dy: 0, crit: false, combo: 0 }, true);
+    handleBreaks(G, broken, { tx: ctx.tx, ty: ctx.ty, dx: 0, dy: 0, crit: false, combo: 0 }, true, 0);
     fxCollapse(G.fx, b.x, b.y, 30);
     G.cam.addShake(CFG.shakeCollapse);
     G.hitstop = Math.max(G.hitstop, 0.09);
@@ -865,7 +890,9 @@ function updateShaft(G, dt, input) {
     } else {
       G.mode = 'run';
       const next = G.strataIdx + 1;
-      G.player.tool = G.player.toolMax;   // the winch house keeps a grinding wheel
+      // The winch house keeps a grinding wheel, but it is not a new pick. A deep run still
+      // arrives at the bottom with a blunt tool, which is the point.
+      G.player.tool = Math.min(G.player.toolMax, G.player.tool + G.player.toolMax * 0.45);
       enterStratum(G, next);
       const s = STRATA[next];
       callout(G, 'STRATUM ' + s.roman, s.name + ' - ' + s.tagline, '#ff9b2e', 2);

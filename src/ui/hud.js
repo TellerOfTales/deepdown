@@ -142,11 +142,11 @@ export function drawHUD(g, G, dt) {
     const cc = p.combo >= 12 ? P.CYAN4 : p.combo >= 5 ? P.GOLD4 : P.UI_BONE;
     text(g, 'x' + p.combo, cxp, cyp, { color: cc, align: 'center', scale: sc, shadow: true });
     const decay = clamp(p.comboT / (CFG.strikeCooldown + CFG.comboDecay), 0, 1);
-    bar(g, cxp - 20, cyp + FONT_H * sc + 2, 40, 3, decay, cc, 'rgba(0,0,0,0.45)');
+    const fw = measure('x' + p.combo, sc) + 12;
+    bar(g, Math.round(cxp - fw / 2) + 2, cyp + FONT_H * sc + 2, fw - 4, 3, decay, cc, 'rgba(0,0,0,0.45)');
     if (p.perfectOpen) {
       g.strokeStyle = P.UI_WHITE; g.lineWidth = 1;
-      const w = measure('x' + p.combo, sc) + 12, h = FONT_H * sc + 10;
-      g.strokeRect(Math.round(cxp - w / 2) + 0.5, cyp - 4 + 0.5, w, h);
+      g.strokeRect(Math.round(cxp - fw / 2) + 0.5, cyp - 4 + 0.5, fw, FONT_H * sc + 10);
     }
   } else if (p.perfectOpen && !p.dead) {
     // Before the first combo exists, the beat still needs a home on screen.

@@ -329,8 +329,8 @@ function mimic(e, dt, ctx, world, p) {
   e.facing = p.x >= e.x ? 1 : -1;
   if (e.state === 'dormant') {
     e.contactDmg = 0;
-    if (d < TS * 1.6) e.aggro += dt; else e.aggro = 0;
-    if (e.aggro > 0.35) {
+    if (d < TS * 1.4) e.aggro += dt; else e.aggro = Math.max(0, e.aggro - dt * 2);
+    if (e.aggro > 0.55) {
       setState(e, 'wake');
       if (ctx.audio) ctx.audio.danger('enemy_alert');
       if (ctx.shake) ctx.shake(2.2);
@@ -341,7 +341,7 @@ function mimic(e, dt, ctx, world, p) {
   }
   if (e.state === 'wake') {
     e.contactDmg = 0;
-    if (e.stateT > 0.35) setState(e, 'bite');
+    if (e.stateT > 0.45) setState(e, 'bite');
     return;
   }
   e.contactDmg = d < TS * 1.7 ? 2 : 0;

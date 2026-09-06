@@ -91,6 +91,129 @@ if (script === 'play') {
     };
   });
   console.log('STATE', JSON.stringify(state, null, 1));
+} else if (script === 'clues') {
+  // Every learnable rule in the game, exercised in situ. If one of these stops firing, the
+  // second design pillar ("the environment is information") has quietly broken.
+  await page.keyboard.press('Enter'); await page.waitForTimeout(250);
+  await page.keyboard.press('Space'); await page.waitForTimeout(600);
+
+  const place = async (finder) => {
+    const ok = await page.evaluate(finder);
+    if (!ok) return false;
+    await page.waitForTimeout(320);
+    await page.keyboard.down('ArrowRight');
+    for (let i = 0; i < 8; i++) { await page.keyboard.press('Space'); await page.waitForTimeout(262); }
+    await page.keyboard.up('ArrowRight');
+    await page.waitForTimeout(250);
+    return true;
+  };
+
+  // stand two tiles left of a face carrying deco `d` whose right neighbour matches `want`
+  const standAt = (d, want) => {
+    const G = window.G, W = G.world;
+    for (let ty = 6; ty < W.h - 6; ty++) for (let tx = 8; tx < W.w - 8; tx++) {
+      if (W.getDeco(tx, ty) !== d) continue;
+      const behind = W.get(tx + 1, ty);
+      if (want.indexOf(behind) < 0) continue;
+      if (!W.solid(tx, ty)) continue;
+      for (let y = ty - 1; y <= ty; y++) for (let x = tx - 4; x < tx; x++) W.set(x, y, 0);
+      for (let x = tx - 4; x < tx; x++) if (!W.solid(x, ty + 1)) W.set(x, ty + 1, 3);
+      G.player.x = (tx - 2) * 16 + 8; G.player.y = (ty + 1) * 16;
+      G.player.vx = 0; G.player.vy = 0; G.player.facing = 1; G.player.hp = 5;
+      G.cam.snapTo(G.player.x - 240, G.player.y - 135, G.world);
+      return true;
+    }
+    return false;
+  };
+
+  const results = {};
+  results.flecks = await place(new Function('return (' + standAt.toString() + ')(2, [7])')); // FLECK_RICH -> gold
+  results.hollow = await place(new Function('return (' + standAt.toString() + ')(3, [0])')); // HAIRLINE  -> air
+  results.roots  = await place(new Function('return (' + standAt.toString() + ')(6, [13,14])')); // ROOTLET -> root/water
+  await shot('c1-after-clues');
+
+  // slate shear + granite refusal: hand-build the situation
+  await page.evaluate(() => {
+    const G = window.G, W = G.world;
+    const tx = 30, ty = Math.floor(W.h / 2);
+    for (let y = ty - 1; y <= ty; y++) for (let x = tx - 5; x < tx; x++) W.set(x, y, 0);
+    for (let x = tx - 5; x < tx + 10; x++) W.set(x, ty + 1, 3);
+    for (let x = tx; x < tx + 9; x++) { W.set(x, ty, 4); W.set(x, ty - 1, 4); }   // slate bed
+    G.player.x = (tx - 2) * 16 + 8; G.player.y = (ty + 1) * 16;
+    G.player.vx = 0; G.player.vy = 0; G.player.facing = 1; G.player.hp = 5;
+    G.cam.snapTo(G.player.x - 240, G.player.y - 135, G.world);
+  });
+  await page.waitForTimeout(300);
+  await page.keyboard.down('ArrowRight');
+  for (let i = 0; i < 8; i++) { await page.keyboard.press('Space'); await page.waitForTimeout(262); }
+  await page.keyboard.up('ArrowRight');
+  await shot('c2-slate-shear');
+
+  await page.evaluate(() => {
+    const G = window.G, W = G.world;
+    const tx = 60, ty = Math.floor(W.h / 2);
+    for (let y = ty - 1; y <= ty; y++) for (let x = tx - 5; x < tx; x++) W.set(x, y, 0);
+    for (let x = tx - 5; x < tx + 6; x++) W.set(x, ty + 1, 3);
+    for (let x = tx; x < tx + 5; x++) { W.set(x, ty, 5); W.set(x, ty - 1, 5); }   // granite face
+    G.player.x = (tx - 2) * 16 + 8; G.player.y = (ty + 1) * 16;
+    G.player.vx = 0; G.player.vy = 0; G.player.facing = 1; G.player.hp = 5;
+    G.player.pickPower = 1;
+    G.cam.snapTo(G.player.x - 240, G.player.y - 135, G.world);
+  });
+  await page.waitForTimeout(300);
+  await page.keyboard.down('ArrowRight');
+  // deliberately press OFF the beat so no crit lands and the granite genuinely refuses
+  for (let i = 0; i < 5; i++) { await page.keyboard.press('Space'); await page.waitForTimeout(430); }
+  await page.keyboard.up('ArrowRight');
+  await shot('c3-granite');
+
+  const st = await page.evaluate(() => ({
+    learned: Array.from(window.G.discoveries), placed: null,
+    msgs: window.G.msgs.map(m => m.text),
+  }));
+  console.log('PLACED', JSON.stringify(results));
+  console.log('CLUES', JSON.stringify(st));
+} else if (script === 'vein') {
+  // Put the miner one tile from a real gold seam and photograph the payoff: the pop, the
+  // value popup, the chevron pointing at where the vein keeps going.
+  await page.keyboard.press('Enter'); await page.waitForTimeout(250);
+  await page.keyboard.press('Space'); await page.waitForTimeout(700);
+  const found = await page.evaluate(() => {
+    const G = window.G, W = G.world;
+    // Find a FLECK_RICH face that has ore directly behind it — the exact situation the whole
+    // gold-clue grammar exists to create — and stand the miner two tiles back from it.
+    for (let ty = 8; ty < W.h - 6; ty++) for (let tx = 8; tx < W.w - 8; tx++) {
+      if (W.getDeco(tx, ty) !== 2) continue;       // D.FLECK_RICH
+      if (W.get(tx + 1, ty) !== 7) continue;       // ore behind it, to the right
+      if (!W.solid(tx, ty)) continue;
+      // carve a standing pocket to the LEFT so the fleck face must be broken to reach the seam
+      for (let y = ty - 1; y <= ty; y++) for (let x = tx - 4; x < tx; x++) W.set(x, y, 0);
+      for (let x = tx - 4; x < tx; x++) if (!W.solid(x, ty + 1)) W.set(x, ty + 1, 3);
+      G.player.x = (tx - 2) * 16 + 8; G.player.y = (ty + 1) * 16;
+      G.player.vx = 0; G.player.vy = 0; G.player.facing = 1;
+      G.cam.snapTo(G.player.x - 240, G.player.y - 135, G.world);
+      return { tx, ty, deco: W.getDeco(tx, ty), behind: W.get(tx + 1, ty) };
+    }
+    return null;
+  });
+  console.log('SEAM', JSON.stringify(found));
+  await page.waitForTimeout(400);
+  await shot('v0-approach');
+  await page.keyboard.down('ArrowRight');
+  for (let i = 0; i < 2; i++) { await page.keyboard.press('Space'); await page.waitForTimeout(262); }
+  await shot('v1-first-break');
+  for (let i = 0; i < 3; i++) { await page.keyboard.press('Space'); await page.waitForTimeout(262); }
+  await shot('v2-vein');
+  for (let i = 0; i < 6; i++) { await page.keyboard.press('Space'); await page.waitForTimeout(262); }
+  await page.keyboard.up('ArrowRight');
+  await page.waitForTimeout(500);
+  await shot('v3-after');
+  const st = await page.evaluate(() => ({
+    haul: Math.round(window.G.haul), items: window.G.haulItems,
+    hints: window.G.veinHints.length, loot: window.G.loot.list.length,
+    learned: Array.from(window.G.discoveries), combo: window.G.player.bestCombo,
+  }));
+  console.log('VEIN', JSON.stringify(st));
 } else if (script === 'descend') {
   // Prove the whole expedition arc: run -> shaft -> stratum II -> shaft -> stratum III
   await page.keyboard.press('Enter'); await page.waitForTimeout(300);
