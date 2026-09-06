@@ -1,0 +1,717 @@
+// game.js — run lifecycle and the composition of feel.
+//
+// Every function that reacts to a strike is doing one job: turning a rule into a sensation, then
+// turning that sensation into the next question. GDD §26: "Every reveal creates another question."
+
+import { CFG, TS, VW, VH, WEIGHT } from './config.js';
+import { T, TILES, D, STRATA } from './world/tiles.js';
+import { World } from './world/world.js';
+import { LightField } from './world/light.js';
+import { generate } from './world/gen.js';
+import { Player, ANIM } from './entities/player.js';
+import { Loot } from './entities/items.js';
+import * as Enemies from './entities/enemies.js';
+import { Camera } from './fx/camera.js';
+import { FX, fxStrike, fxBreak, fxShear, fxCollapse, fxValue, fxDiscovery, fxHollowPuff } from './fx/particles.js';
+import { audio } from './core/audio.js';
+import { Rand, clamp, damp, hashf } from './core/rng.js';
+import { UPGRADES, upgradeCost } from './ui/screens.js';
+import * as SaveMod from './core/save.js';
+
+export const RULES = {
+  flecks:    { title: 'GOLD FLECKS', rule: 'Flecks thicken toward the seam. Dig where they crowd.' },
+  hollow:    { title: 'HAIRLINE CRACKS', rule: 'A hairline in the face means open space behind it.' },
+  echo:      { title: 'THE HOLLOW NOTE', rule: 'A wall with a cavity behind it answers low and long.' },
+  roots:     { title: 'BLUE ROOTS', rule: 'Roots reach for water. Water sits above the geodes.' },
+  shear:     { title: 'SLATE SHEARS', rule: 'Slate lets go along its bed. One clean strike opens a corridor.' },
+  granite:   { title: 'GRANITE', rule: 'Granite refuses a light swing. Charge it, or land the beat.' },
+  chain:     { title: 'FRACTURE CHAINS', rule: 'Break a cracked neighbour and the whole cluster goes.' },
+  mimic:     { title: 'MIMIC VEIN', rule: 'Real gold branches. If the flecks sit on a grid, it is teeth.' },
+  crawler:   { title: 'CRAWLERS', rule: 'They hang above open ground. Take the ceiling out from under them.' },
+  stoneback: { title: 'STONEBACK', rule: 'Armour in front, meat behind. Let it commit, then take the back.' },
+  burrower:  { title: 'BURROWERS', rule: 'They come to the sound of your pick, not to you.' },
+  glowmoth:  { title: 'GLOWMOTHS', rule: 'Your lantern is bait. So is what you are carrying.' },
+  ruin:      { title: 'STRAIGHT EDGES', rule: 'Stone does not lie flat by accident. Someone cut that.' },
+  fossil:    { title: 'ANATOMY', rule: 'Follow the vertebrae the way they curve. The skull is at the end.' },
+  magma:     { title: 'DISCOLOURED STONE', rule: 'Rock stained orange has heat behind it.' },
+  depth:     { title: 'DEPTH', rule: 'Everything below is worth more, and everything below wants it back.' },
+};
+
+const RELICS = [
+  ['lamp',    'MINERS LAMP, UNLIT',    'Brass, cold, and full of oil. Nobody puts a full lamp down.'],
+  ['token',   'COMPANY TOKEN',         'Redeemable at a store that has not existed for ninety years.'],
+  ['idol',    'SQUAT STONE IDOL',      'Carved facing down. Whatever it watches, it is not us.'],
+  ['gear',    'TOOTHED GEAR',          'Machined to a tolerance the surface has not managed since.'],
+  ['ring',    'WEDDING BAND',          'Sized for a hand smaller than yours. No name inside.'],
+  ['plate',   'ETCHED PLATE',          'A map. The shafts on it go down past where the paper ends.'],
+  ['bell',    'HAND BELL',             'It still rings. Down here, that is a poor idea.'],
+  ['spine',   'ARTICULATED SPINE',     'Too many vertebrae. Assembled with care by someone.'],
+  ['key',     'IRON KEY',              'Heavy enough to be a weapon. There is a door somewhere.'],
+  ['seed',    'GLASS SEED',            'Warm. It has been warm the entire time you have held it.'],
+  ['ledger',  'PAGE FROM A LEDGER',    'Columns of names. The last third are crossed out in one stroke.'],
+  ['crown',   'CIRCLET OF WIRE',       'Not decorative. It was made to be worn while working.'],
+];
+
+export function newGame() {
+  const s = SaveMod.load();
+  const G = {
+    mode: 'title', t: 0, runT: 0, dtLast: 0,
+    world: null, lf: null, player: new Player(), cam: new Camera(),
+    fx: new FX(), loot: new Loot(), audio,
+    enemies: [], bombs: [], veinHints: [],
+    strataIdx: 0, depth: 0, maxDepth: 0, runMaxDepth: 0,
+    haul: 0, haulItems: {}, weight: 0,
+    bank: s.bank, seed: 1,
+    msgs: [], callout: null,
+    journal: RELICS.map(r => ({ id: r[0], name: r[1], blurb: r[2], depth: 0, found: s.journal.includes(r[0]) })),
+    discoveries: new Set(s.discoveries),
+    runLearned: [],
+    upgrades: s.upgrades, stats: s.stats, muted: s.muted,
+    ui: { sel: 0, tab: 0, scroll: 0 },
+    shaft: { open: false, choice: 1, near: null },
+    flash: { color: '#ffffff', a: 0 },
+    vignette: 0, hitstop: 0, danger: 0,
+    aim: null, deathCause: '', lastRun: null,
+    sonar: { t: 0, x: 0, y: 0, r: 0 },
+    rand: new Rand(1),
+    cfg: CFG,
+    tutorialShown: {},
+    bagWarned: 0,
+    slowmo: 0,
+  };
+  audio.setMuted(s.muted);
+  return G;
+}
+
+// ── messages & callouts ───────────────────────────────────────────────────────
+export function msg(G, text, color) {
+  G.msgs.push({ text, color: color || '#d8d2c4', t: 0, life: 3.1 });
+  if (G.msgs.length > 5) G.msgs.shift();
+}
+export function callout(G, title, sub, color, tier) {
+  G.callout = { title, sub: sub || '', color: color || '#ffd867', t: 0, life: tier >= 3 ? 3.4 : 2.5, tier: tier || 1 };
+  audio.discovery(tier || 1);
+}
+export function learn(G, id) {
+  if (G.discoveries.has(id)) return false;
+  const r = RULES[id];
+  if (!r) return false;
+  G.discoveries.add(id);
+  G.runLearned.push(r.rule);
+  callout(G, 'FIELD NOTE', r.title + ' - ' + r.rule, '#7fd0f0', 2);
+  return true;
+}
+
+// ── upgrades ──────────────────────────────────────────────────────────────────
+export function lvl(G, id) { return G.upgrades[id] | 0; }
+
+export function applyUpgrades(G) {
+  const p = G.player;
+  p.pickPower = 1 + lvl(G, 'pick');
+  p.dmgMul = 1 + lvl(G, 'carbide') * 0.14;
+  p.heavyTime = CFG.heavyChargeTime * (1 - lvl(G, 'carbide') * 0.15);
+  p.lanternR = CFG.lanternRadius + lvl(G, 'mantle') * 1.7;
+  p.lightMax = Math.round(CFG.lightMax * (1 + lvl(G, 'oil') * 0.35));
+  p.carryMax = Math.round(CFG.carryMax * (1 + lvl(G, 'pack') * 0.42));
+  p.fleckRange = 1 + lvl(G, 'eye');
+  p.resonance = lvl(G, 'resonance') > 0;
+  p.spikes = lvl(G, 'spikes') > 0;
+  p.fallSafe = CFG.fallSafe + lvl(G, 'boots') * 3.2;
+  p.chargesMax = { bomb: lvl(G, 'charges') * 2, sonar: lvl(G, 'sonar') };
+  p.beacon = lvl(G, 'beacon') > 0;
+}
+
+// ── run lifecycle ─────────────────────────────────────────────────────────────
+export function startRun(G, seed) {
+  G.seed = seed || ((G.t * 1000) | 0) ^ (G.stats.runs * 2654435761) ^ 0x9e3779b9;
+  G.rand = new Rand(G.seed);
+  G.haul = 0; G.haulItems = {}; G.weight = 0;
+  G.runT = 0; G.runMaxDepth = 0; G.runLearned = [];
+  G.strataIdx = 0;
+  G.stats.runs++;
+  G.deathCause = '';
+  G.tutorialShown = {};
+  const p = G.player;
+  p.reset(0, 0);
+  applyUpgrades(G);
+  p.hp = p.maxHp; p.light = p.lightMax; p.tool = p.toolMax;
+  p.charges = { bomb: p.chargesMax.bomb, sonar: p.chargesMax.sonar };
+  p.beaconUsed = false;
+  enterStratum(G, 0);
+  G.mode = 'run';
+  audio.ambient(0);
+  msg(G, 'STRATUM I - ' + STRATA[0].name, '#d8d2c4');
+  if (G.world.hint) msg(G, G.world.hint, '#8a8496');
+}
+
+export function enterStratum(G, idx) {
+  G.strataIdx = idx;
+  const s = STRATA[idx];
+  const world = new World(idx, G.seed + idx * 7919);
+  const rand = new Rand((G.seed + idx * 104729) >>> 0);
+  generate(world, rand, { index: idx, depthTop: s.top, valueMul: s.valueMul, threat: s.threat, w: world.w, h: world.h });
+  G.world = world;
+  G.lf = new LightField(world);
+  G.enemies.length = 0;
+  G.bombs.length = 0;
+  G.veinHints.length = 0;
+  G.loot.clear();
+  G.fx.clear();
+  for (const sp of world.spawns) {
+    const e = Enemies.spawn(sp.type, sp.tx * TS + TS / 2, (sp.ty + 1) * TS, s.threat);
+    if (e) G.enemies.push(e);
+  }
+  const p = G.player;
+  p.x = world.entryTX * TS + TS / 2;
+  p.y = (world.entryTY + 1) * TS;
+  p.vx = 0; p.vy = 0; p.dead = false;
+  p.readyAt = G.t; p.combo = 0;
+  G.cam.snapTo(p.x - VW / 2, p.y - VH / 2, world);
+  G.shaft.open = false;
+  audio.ambient(idx);
+}
+
+function bigHaulRef(G) { return 900 * STRATA[Math.min(2, G.strataIdx + 1)].valueMul; }
+
+export function bankRun(G, reason) {
+  const amount = Math.round(G.haul);
+  G.bank += amount;
+  G.stats.banked += amount;
+  G.stats.deepest = Math.max(G.stats.deepest, G.runMaxDepth);
+  G.lastRun = {
+    depth: G.runMaxDepth, value: amount, items: Object.assign({}, G.haulItems),
+    learned: G.runLearned.slice(), time: G.runT, extracted: true, reason,
+  };
+  audio.bank(amount);
+  G.haul = 0; G.haulItems = {}; G.weight = 0;
+  G.mode = 'depot';
+  G.ui.sel = 0;
+  SaveMod.save(G);
+}
+
+export function die(G, cause) {
+  G.deathCause = cause || 'the dark';
+  G.stats.deaths = (G.stats.deaths | 0) + 1;
+  G.stats.deepest = Math.max(G.stats.deepest, G.runMaxDepth);
+  G.lastRun = {
+    depth: G.runMaxDepth, value: Math.round(G.haul), items: Object.assign({}, G.haulItems),
+    learned: G.runLearned.slice(), time: G.runT, extracted: false, reason: cause,
+  };
+  audio.die();
+  SaveMod.save(G);
+}
+
+// ── strike resolution: the composition layer ──────────────────────────────────
+function tileCentre(tx, ty) { return [tx * TS + TS / 2, ty * TS + TS / 2]; }
+
+function cavitySize(world, tx, ty, cap) {
+  // Flood fill open space to decide whether we just made a hole or opened a room.
+  const seen = new Set();
+  const stack = [tx, ty];
+  let n = 0;
+  while (stack.length && n < cap) {
+    const y = stack.pop(), x = stack.pop();
+    const k = y * world.w + x;
+    if (seen.has(k)) continue;
+    if (world.get(x, y) !== T.AIR) continue;
+    seen.add(k); n++;
+    stack.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1);
+  }
+  return n;
+}
+
+function addHaul(G, kind, value) {
+  G.haul += value;
+  G.haulItems[kind] = (G.haulItems[kind] | 0) + 1;
+  G.weight += WEIGHT[kind] || 0;
+}
+
+function veinHint(G, tx, ty) {
+  const world = G.world;
+  const here = world.get(tx, ty);
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  for (const [dx, dy] of dirs) {
+    const t = world.get(tx + dx, ty + dy);
+    if (t === T.ORE_GOLD || t === T.ORE_GEM || t === T.CRYSTAL || t === T.RELIC) {
+      const [cx, cy] = tileCentre(tx, ty);
+      G.veinHints.push({ x: cx + dx * 5, y: cy + dy * 5, dx, dy, t: 0, life: 1.1 });
+    }
+  }
+}
+
+export function resolveStrike(G, info) {
+  const world = G.world, p = G.player, fx = G.fx;
+  G.stats.strikes++;
+  if (info.crit) G.stats.crits++;
+
+  const target = world.get(info.tx, info.ty);
+  const tinfo = TILES[target];
+
+  // Is there open space directly behind this face? That answer becomes a SOUND, and the sound is
+  // the mechanic (GDD §21) — hollow walls ring differently and experienced players hear cavities.
+  const bx = info.tx + (info.dy === 0 ? info.dx : 0);
+  const by = info.ty + (info.dy !== 0 ? info.dy : 0);
+  const hollow = tinfo.solid && world.get(bx, by) === T.AIR;
+
+  const [cx, cy] = tileCentre(info.tx, info.ty);
+  const hx = info.handX, hy = info.handY;
+
+  const res = world.strike(info.tx, info.ty, info.power, info.damage, { crit: info.crit });
+
+  if (!res.hit) {
+    if (res.tooHard) {
+      audio.strike(tinfo.voice, { tooHard: true, crit: info.crit, heavy: info.heavy });
+      fx.sparks(hx, hy, '#c8c5d4', 7, -info.dx, -info.dy);
+      G.cam.addShake(0.9);
+      G.hitstop = Math.max(G.hitstop, 0.03);
+      p.recoilX = info.dx * -3.2; p.recoilY = info.dy * -3.2;
+      if (target === T.GRANITE) {
+        if (!G.tutorialShown.granite) {
+          G.tutorialShown.granite = 1;
+          msg(G, 'TOO HARD - HOLD DIG FOR A HEAVY STRIKE', '#ff9b2e');
+        }
+        learn(G, 'granite');
+      }
+    } else if (target === T.AIR) {
+      audio.strike('dirt', { power: 0 });
+      fx.dust(hx, hy, '#4f4759', 2);
+    }
+    return;
+  }
+
+  // --- a hit that did not break: the THUNK ---
+  audio.strike(tinfo.voice, {
+    crit: info.crit, heavy: info.heavy, combo: info.combo,
+    stage: res.stage, hollow, power: info.power,
+  });
+  G.cam.addShake(info.heavy ? CFG.shakeHeavy : info.crit ? CFG.shakeCrit : CFG.shakeTap);
+  G.cam.punch(info.dx, info.dy, CFG.camPunch * (info.heavy ? 1.5 : info.crit ? 1.1 : 0.6));
+  G.hitstop = Math.max(G.hitstop, info.crit ? CFG.hitstopCrit : CFG.hitstopTap);
+  fxStrike(fx, hx, hy, tinfo, info.dx, info.dy, info.crit);
+
+  if (hollow) {
+    // The Resonance Kit turns the audio tell into a visible one. An information upgrade, not a stat.
+    if (p.resonance) fx.ring(cx + info.dx * 6, cy + info.dy * 6, '#7fd0f0', { r: 13, life: 0.34 });
+    if (world.getDeco(info.tx, info.ty) === D.HAIRLINE) learn(G, 'echo');
+  }
+
+  if (!res.broke) return;
+
+  // --- the POP ---
+  handleBreaks(G, res.broken, info, hollow);
+}
+
+function handleBreaks(G, broken, info, hollow) {
+  const world = G.world, p = G.player, fx = G.fx;
+  let valueGained = 0, best = null, shear = 0, chain = 0;
+  const seedDeco = world.getDeco(info.tx, info.ty);
+
+  for (const b of broken) {
+    const bi = TILES[b.tile];
+    const [bx, by] = tileCentre(b.tx, b.ty);
+    if (b.cause === 'shear') shear++;
+    if (b.cause === 'chain') chain++;
+    fxBreak(fx, bx, by, bi, { big: bi.hp >= 6, shear: b.cause === 'shear', chain: b.cause === 'chain' });
+    G.stats.tilesBroken++;
+
+    if (bi.item && bi.value > 0) {
+      const mul = G.world.stratum.valueMul * (1 + Math.min(p.combo, 20) * 0.03);
+      const value = Math.max(1, Math.round(bi.value * mul * (0.85 + G.rand.f() * 0.3)));
+      G.loot.spawn(bx, by, bi.item, value, G.rand, info.dx, info.dy);
+      valueGained += value;
+      if (!best || value > best.v) best = { v: value, x: bx, y: by, kind: bi.item };
+    } else if (bi.item) {
+      G.loot.spawn(bx, by, bi.item, 0, G.rand, info.dx, info.dy);
+    }
+
+    if (b.tile === T.RELIC) foundRelic(G, bx, by);
+    if (b.tile === T.MIMIC) { learn(G, 'mimic'); msg(G, 'IT WAS NEVER GOLD', '#ff5a4a'); }
+    veinHint(G, b.tx, b.ty);
+    world.queueSettle(b.tx, b.ty);
+  }
+
+  const big = broken.length >= 4;
+  audio.breakTile(TILES[info.crit ? broken[0].tile : broken[0].tile].voice, {
+    big, chain, shear: shear > 0, value: clamp(valueGained / 300, 0, 1),
+  });
+  G.hitstop = Math.max(G.hitstop, big ? CFG.hitstopBigBreak : CFG.hitstopBreak);
+  G.cam.addShake(CFG.shakeBreak + Math.min(4, broken.length * 0.35));
+
+  if (shear > 0) {
+    fxShear(fx, info.tx * TS + TS / 2, info.ty * TS + TS / 2, info.dx, TILES[T.SLATE].dust);
+    learn(G, 'shear');
+    if (shear >= 3) msg(G, 'THE BED LET GO', '#657f9b');
+  }
+  if (chain >= 2) learn(G, 'chain');
+
+  // --- prediction pays better than luck (GDD §13) ---
+  if (valueGained > 0) {
+    const predicted = seedDeco === D.FLECK_RICH || seedDeco === D.GEMGLINT;
+    if (predicted) {
+      learn(G, 'flecks');
+      fx.ring(info.tx * TS + TS / 2, info.ty * TS + TS / 2, '#ffd867', { r: 26, life: 0.4 });
+      G.cam.addShake(1.6);
+    }
+  }
+
+  // --- did we open something? ---
+  if (hollow || world.get(info.tx, info.ty) === T.AIR) {
+    const size = cavitySize(world, info.tx, info.ty, 220);
+    if (size >= 26) {
+      const predicted = seedDeco === D.HAIRLINE || seedDeco === D.AIRFLOW;
+      fxDiscovery(fx, info.tx * TS + TS / 2, info.ty * TS + TS / 2, predicted ? '#ffd867' : '#7fd0f0');
+      G.hitstop = Math.max(G.hitstop, CFG.hitstopDiscovery);
+      G.cam.addShake(4.2);
+      G.flash.color = '#d5fff6'; G.flash.a = predicted ? 0.5 : 0.3;
+      audio.duck(1.4, 0.35);
+      if (predicted) { learn(G, 'hollow'); callout(G, 'YOU CALLED IT', 'HIDDEN CHAMBER - ' + size + ' M3', '#ffd867', 3); }
+      else callout(G, 'HIDDEN CHAMBER', size + ' M3 OF NOTHING AT ALL', '#7fd0f0', 2);
+    } else if (size >= 6 && hollow) {
+      fxHollowPuff(fx, info.tx * TS + TS / 2, info.ty * TS + TS / 2, info.dx, info.dy);
+      if (seedDeco === D.HAIRLINE) learn(G, 'hollow');
+    }
+  }
+
+  // water / magma exposure
+  for (const dxy of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const t = world.get(info.tx + dxy[0], info.ty + dxy[1]);
+    if (t === T.WATER) {
+      if (seedDeco === D.ROOTLET || seedDeco === D.DAMP) learn(G, 'roots');
+      if (!G.tutorialShown.water) { G.tutorialShown.water = 1; msg(G, 'WATER - IT WILL FIND THE LOW GROUND', '#63cbe8'); }
+      audio.danger('water');
+    } else if (t === T.MAGMA) {
+      learn(G, 'magma');
+      audio.danger('magma');
+      msg(G, 'HEAT', '#ff9b2e');
+    } else if (t === T.RUIN) {
+      learn(G, 'ruin');
+    } else if (t === T.BONE) {
+      learn(G, 'fossil');
+    }
+  }
+}
+
+function foundRelic(G, x, y) {
+  const undiscovered = G.journal.filter(j => !j.found);
+  const entry = undiscovered.length ? undiscovered[G.rand.i(undiscovered.length)] : G.journal[G.rand.i(G.journal.length)];
+  entry.found = true; entry.depth = Math.round(G.depth);
+  G.flash.color = '#ffd867'; G.flash.a = 0.62;
+  G.hitstop = Math.max(G.hitstop, CFG.hitstopDiscovery);
+  G.cam.addShake(5.5);
+  callout(G, entry.name, entry.blurb, '#e8b878', 3);
+  G.fx.ring(x, y, '#ffd867', { r: 40, life: 0.7 });
+  G.fx.ring(x, y, '#e6ccff', { r: 26, life: 0.5 });
+  G.runLearned.push('RECOVERED: ' + entry.name);
+}
+
+// ── utilities (bombs / sonar) ─────────────────────────────────────────────────
+export function useUtility(G) {
+  const p = G.player;
+  if (p.charges.bomb > 0) {
+    p.charges.bomb--;
+    const a = p.aim;
+    G.bombs.push({ x: a.tx * TS + TS / 2, y: a.ty * TS + TS / 2, t: 0, fuse: 0.85 });
+    audio.ui('confirm');
+    msg(G, 'CHARGE SET', '#ff9b2e');
+  } else if (p.charges.sonar > 0) {
+    p.charges.sonar--;
+    G.sonar.t = 3.2; G.sonar.x = p.x; G.sonar.y = p.cy; G.sonar.r = 0;
+    audio.discovery(1);
+    msg(G, 'SONAR', '#7fd0f0');
+  } else {
+    audio.ui('deny');
+  }
+}
+
+function updateBombs(G, dt) {
+  for (let i = G.bombs.length - 1; i >= 0; i--) {
+    const b = G.bombs[i];
+    b.t += dt;
+    if (b.t < b.fuse) {
+      if (((b.t * 14) | 0) % 2 === 0) G.fx.sparks(b.x, b.y - 4, '#ff9b2e', 1, 0, -1);
+      continue;
+    }
+    G.bombs.splice(i, 1);
+    const R = 2.9;
+    const ctx = { tx: Math.floor(b.x / TS), ty: Math.floor(b.y / TS) };
+    const broken = [];
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+      if (dx * dx + dy * dy > R * R) continue;
+      const tx = ctx.tx + dx, ty = ctx.ty + dy;
+      if (!TILES[G.world.get(tx, ty)].diggable) continue;
+      G.world.breakAt(tx, ty, 'collapse', 2, false, broken, 0);
+    }
+    handleBreaks(G, broken, { tx: ctx.tx, ty: ctx.ty, dx: 0, dy: 0, crit: false, combo: 0 }, true);
+    fxCollapse(G.fx, b.x, b.y, 30);
+    G.cam.addShake(CFG.shakeCollapse);
+    G.hitstop = Math.max(G.hitstop, 0.09);
+    G.flash.color = '#ff9b2e'; G.flash.a = 0.35;
+    audio.danger('collapse');
+    for (const e of G.enemies) {
+      const d = Math.hypot(e.x - b.x, e.y - b.y);
+      if (d < R * TS + 10) Enemies.hurt(e, 4, Math.sign(e.x - b.x), -1, enemyCtx(G));
+    }
+    const pd = Math.hypot(G.player.x - b.x, G.player.y - G.player.h / 2 - b.y);
+    if (pd < R * TS) G.player.hurt(1, Math.sign(G.player.x - b.x) || 1, -1, playerCtx(G), 'your own charge');
+  }
+}
+
+// ── contexts handed to subsystems ─────────────────────────────────────────────
+function enemyCtx(G) {
+  return {
+    world: G.world, player: G.player, fx: G.fx, audio, rand: G.rand, t: G.t,
+    hitPlayer: (dmg, kx, ky) => { if (G.player.hurt(dmg, kx || 0, ky || 0, playerCtx(G), 'a creature')) { G.cam.addShake(CFG.shakeDamage); G.hitstop = Math.max(G.hitstop, 0.09); } },
+    shake: (a) => G.cam.addShake(a),
+    hitstop: (s) => { G.hitstop = Math.max(G.hitstop, s); },
+    breakTile: (tx, ty) => {
+      const out = [];
+      G.world.breakAt(tx, ty, 'collapse', 0.4, false, out, 0);
+      for (const b of out) {
+        const [x, y] = tileCentre(b.tx, b.ty);
+        fxBreak(G.fx, x, y, TILES[b.tile], {});
+        if (TILES[b.tile].item && TILES[b.tile].value > 0) {
+          G.loot.spawn(x, y, TILES[b.tile].item, Math.round(TILES[b.tile].value * G.world.stratum.valueMul), G.rand, 0, 0);
+        }
+      }
+    },
+    loot: (x, y, kind, value) => G.loot.spawn(x, y, kind, value, G.rand, 0, 0),
+    msg: (t, c) => msg(G, t, c),
+    learn: (id) => learn(G, id),
+  };
+}
+function playerCtx(G) {
+  return {
+    t: G.t, audio, fx: G.fx, weight: G.weight,
+    mouseWorld: G.mouseWorld,
+    onStrike: (info) => resolveStrike(G, info),
+    onEarly: () => { audio.strike('stone', { tooHard: true }); G.fx.dust(G.player.x, G.player.cy, '#4f4759', 2); },
+    onLand: (force, drop) => { audio.land(force); if (drop > 2.5) G.fx.dust(G.player.x, G.player.y, '#4f4759', Math.min(9, 2 + drop | 0)); if (force > 0.5) G.cam.addShake(force * 2.2); },
+    onHurt: (dmg, cause) => {
+      audio.hurt();
+      G.flash.color = '#ff5a4a'; G.flash.a = 0.42;
+      G.cam.addShake(CFG.shakeDamage);
+      G.hitstop = Math.max(G.hitstop, 0.10);
+      G.fx.burst(G.player.x, G.player.cy, { color: '#a44a63', n: 10, speed: [40, 150], life: [0.25, 0.6], gravity: 320, size: [1, 2] });
+      if (G.player.dead) die(G, cause);
+    },
+  };
+}
+
+// ── the frame ─────────────────────────────────────────────────────────────────
+export function update(G, dt, input) {
+  G.t += dt;
+  G.dtLast = dt;
+
+  if (G.hitstop > 0) {
+    G.hitstop -= dt;
+    if (G.hitstop > 0) { updateCosmetic(G, dt * 0.12); return; }
+  }
+
+  switch (G.mode) {
+    case 'title': updateTitle(G, dt, input); break;
+    case 'depot': updateDepot(G, dt, input); break;
+    case 'journal': if (input.pressed('cancel') || input.pressed('journal') || input.pressed('confirm')) { G.mode = 'depot'; audio.ui('close'); } break;
+    case 'pause': updatePause(G, dt, input); break;
+    case 'death': updateDeath(G, dt, input); break;
+    case 'run': case 'shaft': updateRun(G, dt, input); break;
+  }
+  updateCosmetic(G, dt);
+}
+
+function updateCosmetic(G, dt) {
+  G.flash.a = Math.max(0, G.flash.a - dt * 3.4);
+  for (let i = G.msgs.length - 1; i >= 0; i--) {
+    G.msgs[i].t += dt;
+    if (G.msgs[i].t > G.msgs[i].life) G.msgs.splice(i, 1);
+  }
+  if (G.callout) { G.callout.t += dt; if (G.callout.t > G.callout.life) G.callout = null; }
+  if (G.sonar.t > 0) { G.sonar.t -= dt; G.sonar.r += dt * 260; }
+  G.fx.update(dt);
+  G.cam.update(dt);
+}
+
+function updateTitle(G, dt, input) {
+  if (input.pressed('confirm') || input.pressed('dig') || input.anyPressed) {
+    audio.init(); audio.ui('confirm');
+    G.mode = 'depot'; G.ui.sel = 0;
+  }
+}
+
+function updatePause(G, dt, input) {
+  if (input.pressed('pause') || input.pressed('cancel')) { G.mode = 'run'; audio.ui('close'); }
+  else if (input.pressed('abandon')) { die(G, 'you turned back'); G.mode = 'death'; }
+}
+
+function updateDeath(G, dt, input) {
+  if (input.pressed('restart') || input.pressed('dig')) { audio.ui('confirm'); startRun(G); }
+  else if (input.pressed('confirm')) { audio.ui('open'); G.mode = 'depot'; G.ui.sel = 0; }
+}
+
+function updateDepot(G, dt, input) {
+  const n = UPGRADES.length;
+  if (input.pressed('up')) { G.ui.sel = (G.ui.sel + n - 1) % n; audio.ui('move'); }
+  if (input.pressed('down')) { G.ui.sel = (G.ui.sel + 1) % n; audio.ui('move'); }
+  if (input.pressed('journal') && !input.held('dig')) { G.mode = 'journal'; audio.ui('open'); return; }
+  if (input.pressed('confirm')) {
+    const u = UPGRADES[G.ui.sel];
+    const l = lvl(G, u.id);
+    if (l >= u.max) { audio.ui('deny'); return; }
+    const cost = upgradeCost(u, l);
+    if (G.bank >= cost) {
+      G.bank -= cost; G.upgrades[u.id] = l + 1;
+      applyUpgrades(G); audio.ui('buy'); SaveMod.save(G);
+      msg(G, u.name + ' ' + (l + 1), '#7ff0a0');
+    } else audio.ui('deny');
+  }
+  if (input.pressed('dig') || input.pressed('jump')) { audio.ui('confirm'); startRun(G); }
+}
+
+function updateRun(G, dt, input) {
+  const p = G.player, world = G.world;
+  G.runT += dt;
+
+  if (input.pressed('pause') && G.mode === 'run') { G.mode = 'pause'; audio.ui('open'); return; }
+  if (input.pressed('mute')) { G.muted = !G.muted; audio.setMuted(G.muted); SaveMod.save(G); }
+  if (input.pressed('dim')) { p.dim = !p.dim; audio.ui('tick'); msg(G, p.dim ? 'LANTERN DIMMED' : 'LANTERN UP', '#ffcf8a'); }
+
+  // shaft prompt owns the input while it is open
+  if (G.mode === 'shaft') { updateShaft(G, dt, input); return; }
+
+  if (input.pressed('util')) useUtility(G);
+
+  const pctx = playerCtx(G);
+  if (!p.dead) p.update(dt, input, world, pctx);
+  else {
+    p.update(dt, input, world, pctx);
+    if (p.deadT > 1.1) { G.mode = 'death'; return; }
+  }
+
+  const worldEvents = [];
+  world.update(dt, worldEvents);
+  for (const ev of worldEvents) {
+    const [x, y] = tileCentre(ev.tx, ev.ty);
+    if (ev.type === 'land') {
+      G.fx.dust(x, y, TILES[ev.tile].dust, 5);
+      audio.breakTile(TILES[ev.tile].voice, { big: false });
+      G.cam.addShake(0.7);
+      if (Math.abs(G.player.x - x) < 12 && Math.abs(G.player.y - G.player.h / 2 - y) < 16) {
+        G.player.hurt(1, 0, -1, pctx, 'falling rock');
+      }
+      for (const e of G.enemies) if (Math.abs(e.x - x) < 14 && Math.abs(e.y - y) < 18) Enemies.hurt(e, 3, 0, 1, enemyCtx(G));
+    } else if (ev.type === 'flow') {
+      if (TILES[ev.tile].liquid && G.rand.f() < 0.35) {
+        if (ev.tile === T.MAGMA) G.fx.ember(x, y); else G.fx.drip(x, y - 6);
+      }
+    }
+  }
+
+  const ectx = enemyCtx(G);
+  for (let i = G.enemies.length - 1; i >= 0; i--) {
+    const e = G.enemies[i];
+    const dx = e.x - p.x, dy = e.y - p.y;
+    if (dx * dx + dy * dy > 460 * 460) continue;           // sleep far-away creatures
+    Enemies.update(e, dt, ectx);
+    if (e.gone) G.enemies.splice(i, 1);
+  }
+
+  updateBombs(G, dt);
+
+  G.loot.update(dt, world, p, {
+    weight: G.weight,
+    bagWarned: G.t - G.bagWarned < 2.4,
+    collect: (o) => {
+      if (o.kind === 'oil') {
+        p.refillLight(28); audio.pickup('oil', 0);
+        G.fx.popup(o.x, o.y, '+LIGHT', '#ffcf8a', {});
+        return;
+      }
+      p.pickupStreak = Math.min(24, p.pickupStreak + 1);
+      p.pickupStreakT = 1.2;
+      addHaul(G, o.kind, o.value);
+      audio.pickup(o.kind, p.pickupStreak);
+      fxValue(G.fx, o.x, o.y, o.value, o.kind === 'relic' ? '#e8b878' : o.kind === 'gem' ? '#b07ff0' : '#ffd867');
+      if (o.kind === 'relic') G.cam.addShake(2);
+    },
+    onBagFull: () => {
+      G.bagWarned = G.t;
+      msg(G, 'BAG FULL - EXTRACT OR DROP SOMETHING', '#ff5a4a');
+      audio.danger('bagfull');
+    },
+  });
+
+  // depth + lighting window
+  const ptx = Math.floor(p.x / TS), pty = Math.floor(p.y / TS);
+  G.depth = world.stratum.top + pty;
+  G.runMaxDepth = Math.max(G.runMaxDepth, G.depth);
+  G.maxDepth = Math.max(G.maxDepth, G.depth);
+
+  const lanternReach = (p.lanternR) * (0.35 + 0.65 * (p.light / p.lightMax)) * (p.dim ? 0.55 : 1);
+  const sources = [ptx, Math.floor((p.y - p.h * 0.8) / TS), Math.max(2.4, lanternReach)];
+  for (const b of G.bombs) sources.push(Math.floor(b.x / TS), Math.floor(b.y / TS), 4);
+  const margin = 6;
+  const x0 = Math.floor(G.cam.ix / TS) - margin, y0 = Math.floor(G.cam.iy / TS) - margin;
+  const x1 = Math.floor((G.cam.ix + VW) / TS) + margin, y1 = Math.floor((G.cam.iy + VH) / TS) + margin;
+  const amb = G.strataIdx === 0 ? world.stratum.ambient * clamp(1 - pty / 14, 0, 1) : world.stratum.ambient;
+  G.lf.compute(x0, y0, x1, y1, sources, amb);
+
+  // danger + tension
+  let nearest = 999;
+  for (const e of G.enemies) nearest = Math.min(nearest, Math.hypot(e.x - p.x, e.y - p.y));
+  const haulRatio = clamp(G.haul / bigHaulRef(G), 0, 1);
+  G.danger = damp(G.danger, clamp((1 - nearest / 200) * 0.8 + (p.hp <= 2 ? 0.4 : 0), 0, 1), 3, dt);
+  G.vignette = damp(G.vignette, clamp(0.18 + (1 - p.light / p.lightMax) * 0.5 + (p.hp <= 2 ? 0.22 : 0), 0, 0.85), 2.5, dt);
+  audio.update(dt, {
+    depth: G.depth, danger: G.danger, haulRatio, lightRatio: p.light / p.lightMax,
+    stratum: G.strataIdx, alive: !p.dead,
+  });
+
+  G.aim = p.aim;
+  G.cam.follow(p, dt, world);
+
+  // proximity to the shaft / elevator
+  G.shaft.near = null;
+  const shaftPx = world.shaftTX * TS + TS / 2, shaftPy = (world.shaftTY + 1) * TS;
+  if (Math.abs(p.x - shaftPx) < 22 && Math.abs(p.y - shaftPy) < 26) G.shaft.near = 'shaft';
+  const entPx = world.entryTX * TS + TS / 2, entPy = (world.entryTY + 1) * TS;
+  if (Math.abs(p.x - entPx) < 22 && Math.abs(p.y - entPy) < 26) G.shaft.near = 'entry';
+
+  if (G.shaft.near && input.pressed('interact') && !p.dead) {
+    if (G.shaft.near === 'entry') {
+      bankRun(G, 'walked out');
+      msg(G, 'EXTRACTED', '#7ff0a0');
+    } else {
+      G.mode = 'shaft';
+      G.shaft.open = true;
+      G.shaft.choice = G.strataIdx < STRATA.length - 1 ? 1 : 0;
+      audio.ui('open');
+    }
+  }
+  if (p.beacon && !p.beaconUsed && input.pressed('abandon') && !p.dead) {
+    p.beaconUsed = true;
+    bankRun(G, 'beacon');
+    msg(G, 'BEACON FIRED', '#7ff0a0');
+  }
+}
+
+function updateShaft(G, dt, input) {
+  const last = STRATA.length - 1;
+  if (input.pressed('up')) { G.shaft.choice = 0; audio.ui('move'); }
+  if (input.pressed('down') && G.strataIdx < last) { G.shaft.choice = 1; audio.ui('move'); }
+  if (input.pressed('cancel')) { G.mode = 'run'; G.shaft.open = false; audio.ui('close'); }
+  if (input.pressed('interact') || input.pressed('confirm')) {
+    G.shaft.open = false;
+    if (G.shaft.choice === 0) {
+      bankRun(G, 'took the lift');
+      msg(G, 'EXTRACTED', '#7ff0a0');
+    } else {
+      G.mode = 'run';
+      const next = G.strataIdx + 1;
+      G.player.tool = G.player.toolMax;   // the winch house keeps a grinding wheel
+      enterStratum(G, next);
+      const s = STRATA[next];
+      callout(G, 'STRATUM ' + s.roman, s.name + ' - ' + s.tagline, '#ff9b2e', 2);
+      msg(G, G.world.hint, '#8a8496');
+      learn(G, 'depth');
+    }
+  }
+}

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>DEEPER</title>
+<style>
+  html,body{margin:0;height:100%;background:#06060b;overflow:hidden;
+    font-family:ui-monospace,Menlo,Consolas,monospace;color:#8a8496;
+    -webkit-user-select:none;user-select:none;touch-action:none;overscroll-behavior:none;}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;}
+  canvas{image-rendering:pixelated;image-rendering:crisp-edges;display:block;
+    background:#06060b;box-shadow:0 0 0 1px #1a1620,0 24px 80px rgba(0,0,0,.8);}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game"></canvas></div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

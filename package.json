@@ -1,0 +1,16 @@
+{
+  "name": "deeper",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DEEPER - a 2D mining/extraction action roguelite. First Playable.",
+  "type": "module",
+  "scripts": {
+    "dev": "node tools/serve.mjs",
+    "build": "node tools/build.mjs",
+    "check": "node tools/check.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "playwright-core": "^1.63.0"
+  }
+}

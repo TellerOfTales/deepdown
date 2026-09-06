@@ -1,0 +1,43 @@
+<!doctype html><html><head><meta charset="utf-8"><title>base</title>
+<style>html,body{margin:0;background:#0d0c13}canvas{image-rendering:pixelated;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script type="module">
+import { P } from '../src/art/pal.js';
+import * as F from '../src/art/font.js';
+import * as TT from '../src/art/tiletex.js';
+import { TILES, T, D } from '../src/world/tiles.js';
+const W=760,H=430, c=document.getElementById('c');
+c.width=W;c.height=H;c.style.width=(W*2)+'px';c.style.height=(H*2)+'px';
+const g=c.getContext('2d'); g.imageSmoothingEnabled=false;
+g.fillStyle='#14121b';g.fillRect(0,0,W,H);
+let y=6;
+F.text(g,'ABCDEFGHIJKLMNOPQRSTUVWXYZ',6,y,{color:P.UI_WHITE});y+=9;
+F.text(g,'abcdefghijklmnopqrstuvwxyz',6,y,{color:P.UI_WHITE});y+=9;
+F.text(g,'0123456789 !"#$%&\'()*+,-./:;<=>?@[]^_{|}~',6,y,{color:P.UI_WHITE});y+=9;
+F.text(g,'↑↓←→ • ♥ DEEPER 148 M G12,400 x17',6,y,{color:P.UI_GOOD});y+=11;
+F.text(g,'BURIED AT 148 M',6,y,{color:P.UI_WHITE,scale:2});y+=17;
+F.text(g,'HIDDEN CHAMBER',6,y,{color:P.UI_COOL,scale:3});y+=26;
+F.text(g,'DEEPER',6,y,{color:P.UI_GOLD,scale:4});y+=38;
+const A=TT.buildAtlas();
+const ids=[T.DIRT,T.GRAVEL,T.STONE,T.SLATE,T.GRANITE,T.BEDROCK,T.ORE_GOLD,T.ORE_GEM,T.CRYSTAL,T.BONE,T.RUIN,T.RELIC,T.ROOT,T.WATER,T.MAGMA,T.MIMIC,T.GLOWCAP,T.SUPPORT];
+let x=6, sy=y;
+for(const id of ids){
+  F.text(g,TILES[id].name.slice(0,11),x,sy,{color:P.UI_DIM});
+  for(let v=0;v<4;v++){const u=A.uv(id,v);g.drawImage(A.canvas,u.sx,u.sy,16,16,x+v*17,sy+9,16,16);}
+  x+=78; if(x>W-78){x=6;sy+=32;}
+}
+sy+=40;
+F.text(g,'CRACK 1-3',6,sy,{color:P.UI_DIM});
+for(let s=1;s<=3;s++){const u=A.uv(T.STONE,0),cu=A.crack(s);
+ g.drawImage(A.canvas,u.sx,u.sy,16,16,6+(s-1)*18,sy+9,16,16);
+ if(cu)g.drawImage(A.canvas,cu.sx,cu.sy,16,16,6+(s-1)*18,sy+9,16,16);}
+x=70; F.text(g,'DECO',x,sy,{color:P.UI_DIM});
+for(const k of Object.keys(D)){const d=D[k];if(!d)continue;
+ const u=A.uv(T.STONE,1);g.drawImage(A.canvas,u.sx,u.sy,16,16,x,sy+9,16,16);
+ const dv=A.deco(d,0);if(dv)g.drawImage(A.canvas,dv.sx,dv.sy,16,16,x,sy+9,16,16);
+ F.text(g,k.slice(0,5),x,sy+26,{color:P.UI_DIM,scale:1}); x+=26;}
+sy+=44; x=6; F.text(g,'EDGE MASKS',6,sy,{color:P.UI_DIM});
+for(let m=0;m<16;m++){const u=A.uv(T.STONE,2);g.drawImage(A.canvas,u.sx,u.sy,16,16,x,sy+9,16,16);
+ const e=A.edge(m);if(e)g.drawImage(A.canvas,e.sx,e.sy,16,16,x,sy+9,16,16);x+=18;}
+console.log('BASEPREVIEW OK');
+</script></body></html>
