@@ -10,6 +10,10 @@ import {
   drawAimCursor, drawVeinArrows, drawLighting, drawGlow, drawVignette, drawFlash, drawFleckGlints,
 } from './render.js';
 import { P } from './art/pal.js';
+import { T as T_ALL, D as D_ALL, TILES as TILES_ALL, STRATA as STRATA_ALL } from './world/tiles.js';
+import { generate as generateFn } from './world/gen.js';
+import { World as WorldClass } from './world/world.js';
+import { Rand as RandClass } from './core/rng.js';
 import { pixelRing } from './fx/particles.js';
 import { text } from './art/font.js';
 import { clamp } from './core/rng.js';
@@ -345,6 +349,10 @@ window.G = G;   // handy in the console; harmless in a shipped build
 window.__L = L;
 window.__overlaps = overlaps;
 window.__input = input;
+// Handles for the telemetry harness. Harmless in a shipped build, and the alternative is a
+// second copy of the generator that drifts from the real one.
+window.__T = T_ALL; window.__D = D_ALL; window.__TILES = TILES_ALL; window.__STRATA = STRATA_ALL;
+window.__generate = generateFn; window.__World = WorldClass; window.__Rand = RandClass;
 window.__shaftLayout = shaftLayout;
 window.__depotLayout = depotLayout;
 window.__winchFee = winchFee;
