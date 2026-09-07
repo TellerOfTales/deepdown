@@ -302,7 +302,7 @@ export class AudioEngine {
   comboTick(combo) {
     if (!this._ok('tick', 40)) return;
     // The metronome. Quiet, but it is how the beat is learned by ear.
-    this._noise(0.012, 'highpass', 7000, 1, 0.035 + Math.min(combo, 16) * 0.002, 0.05, 0);
+    this._noise(0.012, 'highpass', 7000, 1, 0.035 + Math.min(combo, 20) * 0.002, 0.05, 0);
   }
   comboBreak() {
     if (!this._ok('cb', 120)) return;

@@ -82,6 +82,8 @@ export function newGame() {
     rand: new Rand(1),
     cfg: CFG,
     tutorialShown: {},
+    // Teaching lines the player has already been shown, across every run. Persisted.
+    taught: (s.taught || []).reduce((o, k) => (o[k] = 1, o), {}),
     bagWarned: 0,
     coachT: 0,
     ruleTable: RULES,
@@ -134,6 +136,9 @@ export function applyUpgrades(G) {
 }
 
 // ── run lifecycle ─────────────────────────────────────────────────────────────
+/** The teaching lines that must never fire twice for the same player. */
+const TAUGHT_ONCE = ['crit', 'combo5', 'combo12', 'beat', 'granite', 'water', 'mimicMsg', 'climb', 'winch'];
+
 export function startRun(G, seed) {
   G.seed = seed || ((G.t * 1000) | 0) ^ (G.stats.runs * 2654435761) ^ 0x9e3779b9;
   G.rand = new Rand(G.seed);
@@ -146,7 +151,12 @@ export function startRun(G, seed) {
   G.runStart = { tiles: G.stats.tilesBroken | 0, strikes: G.stats.strikes | 0, crits: G.stats.crits | 0 };
   G.deathCause = '';
   G.deathRecorded = false;
-  G.tutorialShown = {};
+  // Lessons stay learned. This used to be cleared every run and never saved, so a player on
+  // run eighty was still being told what a critical fracture is, every single descent. The
+  // state alerts (a blunt pick, a dying lantern) DO want resetting — they describe the run
+  // you are in, not a thing you have been taught — so they are re-armed and the teaching
+  // lines are not.
+  G.tutorialShown = Object.assign({}, G.taught);
   // The whole feel layer, not just the simulation: dying inside a discovery hitstop and
   // hammering R used to start the next run at 3.5% speed under the last run's callout.
   G.hitstop = 0; G.flash.a = 0; G.callout = null; G.msgs.length = 0;
@@ -162,7 +172,10 @@ export function startRun(G, seed) {
   G.mode = 'run';
   audio.ambient(0);
   if (G.stats.runs <= 1) {
-    msg(G, 'SPACE  DIG      A D  MOVE      K  JUMP', '#d8d2c4');
+    // Name the controls this player actually has. The first line of the game told a phone
+    // player to press SPACE, A, D and K.
+    msg(G, G.touch ? 'DIG  BREAK ROCK      PAD  MOVE AND AIM      JUMP'
+                   : 'SPACE  DIG      A D  MOVE      K  JUMP', '#d8d2c4');
     G.coachT = 0;
   }
   if (G.world.hint) msg(G, G.world.hint, '#8a8496');
@@ -220,7 +233,13 @@ export function winchFee(G) {
   return Math.round(G.haul * (CFG.winchMinCut + (CFG.winchMaxCut - CFG.winchMinCut) * t));
 }
 
+/** A lesson taught in this run is taught for good. Called wherever a run ends. */
+function retainLessons(G) {
+  for (const k of TAUGHT_ONCE) if (G.tutorialShown[k]) G.taught[k] = 1;
+}
+
 export function bankRun(G, reason, fee) {
+  retainLessons(G);
   const cut = Math.max(0, Math.min(Math.round(fee || 0), Math.round(G.haul)));
   const amount = Math.round(G.haul) - cut;
   G.bank += amount;
@@ -253,6 +272,7 @@ export function bankRun(G, reason, fee) {
 }
 
 export function die(G, cause) {
+  retainLessons(G);
   G.deathCause = cause || 'the dark';
   G.stats.deaths = (G.stats.deaths | 0) + 1;
   G.stats.deepest = Math.max(G.stats.deepest, G.runMaxDepth);
@@ -302,6 +322,7 @@ function cavitySize(world, tx, ty, cap, ptx, pty) {
   const seen = new Set();
   const stack = [tx, ty];
   let n = 0;
+  let x0 = tx, x1 = tx, y0 = ty, y1 = ty;      // bounding box of what the flood has reached
   while (stack.length && n < cap) {
     const y = stack.pop(), x = stack.pop();
     if (x < 1 || y < 0 || x >= world.w - 1 || y >= world.h - 1) continue;
@@ -314,11 +335,19 @@ function cavitySize(world, tx, ty, cap, ptx, pty) {
     // can climb back to the alcove and every pillar you break reports a chamber.
     if (x === ptx && y === pty) return 0;
     seen.add(k); n++;
+    if (x < x0) x0 = x; if (x > x1) x1 = x;
+    if (y < y0) y0 = y; if (y > y1) y1 = y;
     stack.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1);
   }
-  // Truncated means "I could not tell", not "enormous". Returning the cap made an unresolved
-  // space the loudest possible answer; silence is a far cheaper failure than a lie.
-  return stack.length ? 0 : n;
+  if (!stack.length) return n;
+  // Truncated. That used to mean silence, because a player's own sprawling excavation floods
+  // past the cap before it can find them and every pillar they broke reported a chamber. But
+  // silence also swallowed the best moment in the game: a genuinely enormous cavern got no
+  // callout, no hitstop, nothing — and the copy written for it, IT KEEPS GOING, was
+  // unreachable. The two cases are told apart by SHAPE, not size. A hand-dug tunnel is one or
+  // two tiles wide however long it runs; a hall is wide in both directions.
+  const w = x1 - x0 + 1, h = y1 - y0 + 1;
+  return (w >= 6 && h >= 5) ? cap : 0;
 }
 
 function addHaul(G, kind, value) {
@@ -523,7 +552,7 @@ function handleBreaks(G, broken, info, seedDeco, seedCavity) {
     G.stats.tilesBroken++;
 
     if (bi.item && bi.value > 0) {
-      const mul = G.world.stratum.valueMul * (1 + Math.min(p.combo, 20) * 0.03);
+      const mul = G.world.stratum.valueMul * (1 + Math.min(p.combo, CFG.comboMax) * 0.03);
       const value = Math.max(1, Math.round(bi.value * mul * (0.85 + G.rand.f() * 0.3)));
       G.loot.spawn(bx, by, bi.item, value, G.rand, info.dx, info.dy);
       valueGained += value;

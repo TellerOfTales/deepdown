@@ -437,7 +437,7 @@ export class Player {
     const power = this.pickPower + (heavy ? 1 : 0) + (crit ? 1 : 0);
     let damage = CFG.dmgNormal * this.dmgMul;
     if (heavy) damage *= CFG.heavyMul;
-    if (crit) damage *= CFG.critMul * (1 + Math.min(this.combo, 12) * 0.035);
+    if (crit) damage *= CFG.critMul * (1 + Math.min(this.combo, CFG.comboMax) * 0.035);
 
     this.tool = Math.max(0, this.tool - (heavy ? CFG.toolWearHeavy : CFG.toolWearTap));
     if (this.tool <= 0) damage *= 0.55;   // a blunt pick still works, it just stops being fun

@@ -44,7 +44,10 @@ export const CFG = {
   perfectWindow:  0.115,   // ...and this long after. ~205ms total. Generous, but not free.
   earlyLockout:   0.085,   // a too-early press stalls the pick: mashing is strictly worse
   comboDecay:     0.70,    // grace after the window closes before the combo drops
-  comboMax:       40,
+  // The counter has to stop where the payoff stops. It ran to 40 while the damage bonus capped
+  // at 12, the ore value at 20 and the audio pitch at 16 — so the back half of every combo was
+  // a number climbing for nothing, on the one system the whole game is built to reward.
+  comboMax:       20,
 
   heavyChargeTime: 0.42,   // hold DIG this long for a heavy strike
   heavyCooldown:   0.32,

@@ -5,6 +5,7 @@ const EMPTY = () => ({
   upgrades: {},
   journal: [],
   discoveries: [],
+  taught: [],
   stats: { runs: 0, deepest: 0, banked: 0, tilesBroken: 0, bestCombo: 0, strikes: 0, crits: 0, deaths: 0 },
   muted: false,
 });
@@ -25,6 +26,7 @@ export function load() {
                    .filter(j => j && typeof j.id === 'string')
         : [],
       discoveries: Array.isArray(d.discoveries) ? d.discoveries : [],
+      taught: Array.isArray(d.taught) ? d.taught : [],
       // Coerce: a stat that came back as a string would string-concatenate on the next
       // `banked += amount` and the lifetime figure would never recover.
       stats: (() => {
@@ -43,6 +45,7 @@ export function save(G) {
       bank: G.bank,
       upgrades: G.upgrades,
       journal: G.journal.filter(j => j.found).map(j => ({ id: j.id, depth: j.depth | 0 })),
+      taught: Object.keys(G.taught || {}),
       discoveries: Array.from(G.discoveries),
       stats: G.stats,
       muted: G.muted,

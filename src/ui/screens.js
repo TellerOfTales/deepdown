@@ -15,7 +15,7 @@ import { clamp, hashf } from '../core/rng.js';
 import { money, moneyBig } from './hud.js';
 
 export const UPGRADES = [
-  { id: 'pick',      name: 'REINFORCED PICK',   desc: 'Break granite and masonry with a normal strike.', icon: 'ICON_PICK',   max: 2, cost: 420,  step: 2.4 },
+  { id: 'pick',      name: 'REINFORCED PICK',   desc: 'Break granite and masonry with a normal strike.', icon: 'ICON_PICK',   max: 1, cost: 420,  step: 2.4 },
   { id: 'carbide',   name: 'CARBIDE TIP',       desc: 'Heavy strikes charge faster and hit harder.',     icon: 'ICON_PICK',   max: 3, cost: 300,  step: 2.0 },
   { id: 'mantle',    name: 'LANTERN MANTLE',    desc: 'A wider circle of certainty.',                    icon: 'ICON_LANTERN',max: 3, cost: 260,  step: 2.0 },
   { id: 'oil',       name: 'OIL RESERVE',       desc: 'The dark comes for you later.',                   icon: 'ICON_LANTERN',max: 3, cost: 220,  step: 1.9 },

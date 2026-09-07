@@ -277,14 +277,25 @@ function drawMessages(g, G) {
   // A discovery banner owns the screen while it is up; transient lines duck under it.
   const duck = G.mode === 'shaft' ? 0 : G.callout ? 0.35 : 1;
   const shown = list.slice(-3);
-  for (let i = 0; i < shown.length; i++) {
-    const m = shown[i];
+  const w = VIEW.w - 16;
+  // WRAP, do not truncate. Every one of the sixteen field-note rules is 300-380px of text
+  // against a 183px line on a phone, so a maxWidth here cut each one in half and threw away
+  // the actionable clause: "Flecks thicken toward the sea..." teaches nothing at all. The
+  // message stack is the game's whole mechanism for teaching a geological rule; it has to
+  // grow upward instead of getting shorter.
+  const blocks = shown.map(m => ({ m, lines: wrap(m.text, w, 1).slice(0, 3) }));
+  let y = VIEW.y + VIEW.h - 72;
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const { m, lines } = blocks[i];
     const age = m.t / m.life;
     const a = (age < 0.08 ? age / 0.08 : age > 0.8 ? (1 - age) / 0.2 : 1) * duck;
     const rise = (1 - Math.min(1, m.t * 7)) * 5;
-    const y = VIEW.y + VIEW.h - 72 - (shown.length - 1 - i) * 10 + rise;
-    text(g, m.text, VIEW.x + VIEW.w / 2, Math.round(y),
-      { color: m.color, align: 'center', alpha: clamp(a, 0, 1), shadow: true, maxWidth: VIEW.w - 12 });
+    y -= (lines.length - 1) * 9;
+    for (let k = 0; k < lines.length; k++) {
+      text(g, lines[k], VIEW.x + VIEW.w / 2, Math.round(y + k * 9 + rise),
+        { color: m.color, align: 'center', alpha: clamp(a, 0, 1), shadow: true });
+    }
+    y -= 11;
   }
 }
 
@@ -309,20 +320,28 @@ function drawCallout(g, G) {
   g.save();
   g.globalAlpha = a * 0.72;
   g.fillStyle = P.INK;
-  g.fillRect(VIEW.x, y - 8, cw, FONT_H * sc + 24);
+  const subN = c.sub ? wrap(c.sub, cw - 16, 1).slice(0, 3).length : 0;
+  g.fillRect(VIEW.x, y - 8, cw, FONT_H * sc + 16 + subN * 9);
   g.globalAlpha = a;
   const ruleW = Math.round(cw * clamp(c.t / 0.28, 0, 1));
   g.fillStyle = c.color;
   g.fillRect(cx - ruleW / 2, y - 8, ruleW, 1);
-  g.fillRect(cx - ruleW / 2, y + FONT_H * sc + 15, ruleW, 1);
+  g.fillRect(cx - ruleW / 2, y + FONT_H * sc + 7 + subN * 9, ruleW, 1);
   g.restore();
 
   text(g, c.title, cx, y, {
     color: c.color, align: 'center', scale: Math.max(1, Math.round(sc * overshoot)),
     shadow: true, alpha: a, wave: c.tier >= 3 ? 1 : 0, waveSpeed: 9, t: c.t, maxWidth: cw - 8,
   });
-  if (c.sub) text(g, c.sub, cx, y + FONT_H * sc + 5,
-    { color: P.UI_BONE, align: 'center', alpha: a * 0.9, shadow: true, maxWidth: cw - 12 });
+  // The subtitle carries the RULE — the sentence the whole discovery exists to deliver. It
+  // wraps; it is never cut.
+  if (c.sub) {
+    const subLines = wrap(c.sub, cw - 16, 1).slice(0, 3);
+    for (let i = 0; i < subLines.length; i++) {
+      text(g, subLines[i], cx, y + FONT_H * sc + 5 + i * 9,
+        { color: P.UI_BONE, align: 'center', alpha: a * 0.9, shadow: true });
+    }
+  }
 }
 
 /**
