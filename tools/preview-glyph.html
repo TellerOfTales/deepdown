@@ -1,0 +1,12 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#14121b}canvas{image-rendering:pixelated}</style></head>
+<body><canvas id="c" width="420" height="120" style="width:840px;height:240px"></canvas>
+<script type="module">
+import * as F from '../src/art/font.js';
+const g=document.getElementById('c').getContext('2d');g.imageSmoothingEnabled=false;
+g.fillStyle='#14121b';g.fillRect(0,0,420,120);
+F.text(g,'↑↓←→ • ♥ G$',6,6,{color:'#ffd867',scale:4});
+F.text(g,'B8 S5 G6 MNW aoe il1',6,44,{color:'#f2f0f5',scale:3});
+F.text(g,'EXTRACT DESCEND AT RISK',6,74,{color:'#7ff0a0',scale:2});
+F.text(g,'x17 COMBO 1,240 M 98%',6,96,{color:'#7fd0f0',scale:2});
+console.log('GLYPH OK');
+</script></body></html>

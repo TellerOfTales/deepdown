@@ -1,0 +1,20 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#14121b}canvas{image-rendering:pixelated}</style></head>
+<body><canvas id="c" width="300" height="120" style="width:1200px;height:480px"></canvas>
+<script type="module">
+import * as TT from '../src/art/tiletex.js'; import {T} from '../src/world/tiles.js';
+import * as F from '../src/art/font.js'; import {P} from '../src/art/pal.js';
+const g=document.getElementById('c').getContext('2d'); g.imageSmoothingEnabled=false;
+g.fillStyle='#14121b';g.fillRect(0,0,300,120);
+const A=TT.buildAtlas();
+F.text(g,'REAL GOLD SEAM',4,4,{color:P.UI_DIM});
+for(let v=0;v<4;v++){const u=A.uv(T.ORE_GOLD,v);g.drawImage(A.canvas,u.sx,u.sy,16,16,4+v*18,14,16,16);}
+F.text(g,'MIMIC',4,36,{color:P.UI_DIM});
+for(let v=0;v<4;v++){const u=A.uv(T.MIMIC,v);g.drawImage(A.canvas,u.sx,u.sy,16,16,4+v*18,46,16,16);}
+F.text(g,'MIXED - WHICH TWO ARE FAKE?',90,4,{color:P.UI_DIM});
+const order=[T.ORE_GOLD,T.MIMIC,T.ORE_GOLD,T.ORE_GOLD,T.MIMIC,T.ORE_GOLD];
+order.forEach((id,i)=>{const u=A.uv(id,i%4);g.drawImage(A.canvas,u.sx,u.sy,16,16,90+i*18,14,16,16);});
+F.text(g,'FLECK HALO: RICH (real) vs MIMIC LATTICE',90,36,{color:P.UI_DIM});
+for(let v=0;v<4;v++){const s=A.uv(T.STONE,v);g.drawImage(A.canvas,s.sx,s.sy,16,16,90+v*18,46,16,16);
+  const d=A.deco(2,v); if(d)g.drawImage(A.canvas,d.sx,d.sy,16,16,90+v*18,46,16,16);}
+console.log('MIMIC OK');
+</script></body></html>

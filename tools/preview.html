@@ -1,0 +1,87 @@
+<!doctype html><html><head><meta charset="utf-8"><title>DEEPER art preview</title>
+<style>html,body{margin:0;background:#0d0c13;color:#8a8496;font:12px monospace}
+canvas{image-rendering:pixelated;display:block;margin:0 auto;background:#14121b}</style></head>
+<body><canvas id="c"></canvas>
+<script type="module">
+import { P } from '../src/art/pal.js';
+import * as F from '../src/art/font.js';
+import * as TT from '../src/art/tiletex.js';
+import { TILES, T, D } from '../src/world/tiles.js';
+import { drawSprite, bake } from '../src/art/spritesheet.js';
+import * as PL from '../src/art/sprites_player.js';
+import * as EN from '../src/art/sprites_enemies.js';
+import * as PR from '../src/art/sprites_props.js';
+
+const W = 900, H = 1500;
+const c = document.getElementById('c');
+c.width = W; c.height = H;
+c.style.width = (W*1.5)+'px'; c.style.height=(H*1.5)+'px';
+const g = c.getContext('2d');
+g.imageSmoothingEnabled = false;
+g.fillStyle = '#14121b'; g.fillRect(0,0,W,H);
+
+let y = 8;
+function label(s){ F.text(g, s, 8, y, {color:P.UI_GOLD}); y += 11; }
+
+label('FONT 1x');
+F.text(g,'ABCDEFGHIJKLMNOPQRSTUVWXYZ',8,y,{color:P.UI_WHITE}); y+=9;
+F.text(g,'abcdefghijklmnopqrstuvwxyz',8,y,{color:P.UI_WHITE}); y+=9;
+F.text(g,'0123456789 !"#$%&\'()*+,-./:;<=>?@[]^_{|}~',8,y,{color:P.UI_WHITE}); y+=9;
+F.text(g,'↑↓←→ • ♥  DEEPER 148 M  G12,400  x17',8,y,{color:P.UI_GOOD}); y+=12;
+label('FONT 2x / 3x / 4x');
+F.text(g,'BURIED AT 148 M',8,y,{color:P.UI_WHITE,scale:2}); y+=17;
+F.text(g,'HIDDEN CHAMBER',8,y,{color:P.UI_COOL,scale:3}); y+=25;
+F.text(g,'DEEPER',8,y,{color:P.UI_GOLD,scale:4}); y+=36;
+
+label('TILE ATLAS (each material x4 variants, then cracks/deco/edge)');
+const A = TT.buildAtlas();
+const ids = [T.DIRT,T.GRAVEL,T.STONE,T.SLATE,T.GRANITE,T.BEDROCK,T.ORE_GOLD,T.ORE_GEM,T.CRYSTAL,T.BONE,T.RUIN,T.RELIC,T.ROOT,T.WATER,T.MAGMA,T.MIMIC,T.GLOWCAP,T.SUPPORT];
+let x = 8;
+for (const id of ids) {
+  F.text(g, TILES[id].name.slice(0,10), x, y, {color:P.UI_DIM});
+  for (let v=0; v<4; v++){ const u=A.uv(id,v); g.drawImage(A.canvas,u.sx,u.sy,16,16,x+v*17,y+10,16,16); }
+  x += 76; if (x > W-80){ x = 8; y += 32; }
+}
+y += 40;
+label('CRACK STAGES on stone / DECO overlays / EDGE masks');
+for (let s=1;s<=3;s++){ const u=A.uv(T.STONE,0), cu=A.crack(s);
+  g.drawImage(A.canvas,u.sx,u.sy,16,16,8+(s-1)*20,y,16,16);
+  if(cu) g.drawImage(A.canvas,cu.sx,cu.sy,16,16,8+(s-1)*20,y,16,16); }
+x = 80;
+for (const k of Object.keys(D)) { const d = D[k]; if(!d) continue;
+  const u=A.uv(T.STONE,1); g.drawImage(A.canvas,u.sx,u.sy,16,16,x,y,16,16);
+  const dv=A.deco(d,0); if(dv) g.drawImage(A.canvas,dv.sx,dv.sy,16,16,x,y,16,16);
+  F.text(g,k.slice(0,6),x,y+18,{color:P.UI_DIM}); x += 24; }
+y += 34;
+x = 8;
+for (let m=0;m<16;m++){ const u=A.uv(T.STONE,2); g.drawImage(A.canvas,u.sx,u.sy,16,16,x,y,16,16);
+  const e=A.edge(m); if(e) g.drawImage(A.canvas,e.sx,e.sy,16,16,x,y,16,16); x+=18; }
+y += 30;
+
+function sheet(title, mod, keys) {
+  label(title);
+  let cx = 12;
+  for (const k of keys) {
+    const spr = mod[k];
+    if (!spr) { F.text(g,'MISSING '+k,cx,y,{color:'#ff5a4a'}); cx += 90; continue; }
+    const b = bake(spr);
+    F.text(g, k.replace(/^(MINER_|ICON_|ITEM_)/,''), cx, y, {color:P.UI_DIM});
+    for (let f=0; f<b.count; f++) {
+      g.fillStyle = (f%2)?'#1a1620':'#221f2b'; g.fillRect(cx+f*(b.w+2), y+10, b.w, b.h);
+      drawSprite(g, spr, f, cx+f*(b.w+2)+b.ox, y+10+b.oy, null);
+    }
+    cx += b.count*(b.w+2) + 16;
+    if (cx > W-120){ cx = 12; y += 46; }
+  }
+  y += 52;
+}
+sheet('PLAYER', PL, ['MINER_IDLE','MINER_WALK','MINER_DIG_SIDE']);
+sheet('PLAYER 2', PL, ['MINER_DIG_DOWN','MINER_DIG_UP','MINER_CHARGE']);
+sheet('PLAYER 3', PL, ['MINER_JUMP','MINER_FALL','MINER_LAND','MINER_CLIMB','MINER_HURT','MINER_DEAD']);
+sheet('ENEMIES', EN, ['BURROWER_MOVE','BURROWER_LUNGE','CRAWLER_CLING','CRAWLER_SCUTTLE']);
+sheet('ENEMIES 2', EN, ['STONEBACK_WALK','GLOWMOTH_FLY','MIMIC_DORMANT','MIMIC_WAKE']);
+sheet('ITEMS', PR, ['ITEM_NUGGET','ITEM_GEM','ITEM_SHARD','ITEM_BONE','ITEM_RELIC','ITEM_OIL']);
+sheet('ICONS', PR, ['ICON_HEART','ICON_HEART_HALF','ICON_HEART_EMPTY','ICON_LANTERN','ICON_BAG','ICON_PICK','ICON_BOMB','ICON_SONAR','ICON_DEPTH','ICON_COMBO','CURSOR','ARROW_UP','ARROW_DOWN','VEIN_ARROW']);
+sheet('PROPS', PR, ['ELEVATOR','SHAFT_RIG','CRATE','SIGN','SKULL_PROP','LANTERN_PROP','BEACON']);
+console.log('PREVIEW OK height used', y);
+</script></body></html>

@@ -1,0 +1,31 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#1e1b26}canvas{image-rendering:pixelated}</style></head>
+<body><canvas id="c" width="460" height="230" style="width:1380px;height:690px"></canvas>
+<script type="module">
+import * as EN from '../src/art/sprites_enemies.js';
+import { drawSprite, bake } from '../src/art/spritesheet.js';
+import * as F from '../src/art/font.js'; import {P} from '../src/art/pal.js';
+const g=document.getElementById('c').getContext('2d'); g.imageSmoothingEnabled=false;
+g.fillStyle='#1e1b26';g.fillRect(0,0,460,230);
+const rows=[
+ ['BURROWER_SWIM','BURROWER_MOVE','BURROWER_LUNGE'],
+ ['CRAWLER_CLING','CRAWLER_TENSE','CRAWLER_DROP','CRAWLER_SCUTTLE'],
+ ['STONEBACK_WALK','STONEBACK_BRACE','STONEBACK_CHARGE'],
+ ['GLOWMOTH_FLY','MIMIC_DORMANT','MIMIC_WAKE','MIMIC_BITE'],
+];
+let y=4;
+for(const row of rows){
+  let x=4;
+  for(const name of row){
+    const spr=EN[name]; if(!spr){F.text(g,'MISSING '+name,x,y,{color:'#f55'});x+=80;continue;}
+    const b=bake(spr);
+    F.text(g,name.replace(/^(BURROWER_|CRAWLER_|STONEBACK_|GLOWMOTH_|MIMIC_)/,''),x,y,{color:P.UI_DIM});
+    for(let f=0;f<b.count;f++){
+      g.fillStyle=(f%2)?'#2f2b3a':'#26222f'; g.fillRect(x+f*(b.w+2),y+9,b.w,b.h);
+      drawSprite(g,spr,f,x+f*(b.w+2)+b.ox,y+9+b.oy,null);
+    }
+    x+=b.count*(b.w+2)+12;
+  }
+  y+=52;
+}
+console.log('ENEMYSHEET OK');
+</script></body></html>
