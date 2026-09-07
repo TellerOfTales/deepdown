@@ -414,8 +414,15 @@ export function fxCollapse(fx, x, y, n) {
 }
 
 export function fxValue(fx, x, y, amount, color) {
-  fx.popup(x, y - 4, '+' + amount, color, { scale: amount >= 300 ? 2 : 1, life: amount >= 300 ? 1.15 : 0.85 });
+  // Three sizes, because a payout that looks the same whether it was 40 or 900 is a payout the
+  // player stops reading. The top tier is the seam gamble paying off and it should be unmissable
+  // from across the screen.
+  const big = amount >= 900, mid = amount >= 300;
+  fx.popup(x, y - 4, '+' + amount, color,
+    { scale: big ? 3 : mid ? 2 : 1, life: big ? 1.5 : mid ? 1.15 : 0.85 });
   fx.glint(x, y, color);
+  if (mid) fx.ring(x, y, color, { r: big ? 30 : 18, life: big ? 0.6 : 0.4, thick: big ? 2 : 1 });
+  if (big) for (let i = 0; i < 6; i++) fx.glint(x + (rnd() - 0.5) * 40, y + (rnd() - 0.5) * 28, color);
 }
 
 /** The big one. A correct prediction has to be louder than an accident. */

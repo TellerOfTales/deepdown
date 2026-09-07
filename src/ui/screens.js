@@ -13,6 +13,7 @@ import { VW, VH, SAFE } from '../config.js';
 import { STRATA } from '../world/tiles.js';
 import { clamp, hashf } from '../core/rng.js';
 import { money, moneyBig } from './hud.js';
+import { audio } from '../core/audio.js';
 
 export const UPGRADES = [
   { id: 'pick',      name: 'REINFORCED PICK',   desc: 'Break granite and masonry with a normal strike.', icon: 'ICON_PICK',   max: 1, cost: 420,  step: 2.4 },
@@ -95,6 +96,19 @@ export function depotLayout(sel) {
 export function screensUpdate(G, dt) {
   S.t += dt;
   S.sel = G.ui ? (G.ui.sel | 0) : 0;
+
+  // The bank counts up to what the run earned, with a tick under it. Fast enough not to be a
+  // wait (a second and a half at the outside), slow enough that a big haul takes visibly longer
+  // to land than a small one — which is the whole point of a payout.
+  if (G.bankShown === undefined) G.bankShown = G.bank;
+  if (G.bankShown < G.bank) {
+    const gap = G.bank - G.bankShown;
+    G.bankShown = Math.min(G.bank, G.bankShown + Math.max(gap * dt * 2.6, Math.max(4, G.bank * dt * 0.7)));
+    G.bankTick = (G.bankTick || 0) - dt;
+    if (G.bankTick <= 0 && G.mode === 'depot') { G.bankTick = 0.055; audio.ui('tick'); }
+  } else if (G.bankShown > G.bank) {
+    G.bankShown = G.bank;                     // a purchase lands immediately; only gains climb
+  }
   if (!S.dust) {
     S.dust = [];
     for (let i = 0; i < 90; i++) {
@@ -204,8 +218,11 @@ export function drawDepot(g, G, dt) {
 
   text(g, 'THE DEPOT', hx, hy, { color: P.UI_DIM });
   const bankSc = D.narrow ? 2 : 3;
-  text(g, money(G.bank), hx, hy + 9, { color: P.UI_GOLD, scale: bankSc, shadow: true });
-  text(g, 'BANKED', hx + measure(money(G.bank), bankSc) + 6, hy + 9 + (bankSc - 1) * 6,
+  const climbing = (G.bankShown || 0) < G.bank - 0.5;
+  const shown = money(Math.round(G.bankShown === undefined ? G.bank : G.bankShown));
+  text(g, shown, hx, hy + 9,
+    { color: climbing ? P.GOLD5 : P.UI_GOLD, scale: bankSc, shadow: true });
+  text(g, 'BANKED', hx + measure(shown, bankSc) + 6, hy + 9 + (bankSc - 1) * 6,
     { color: P.UI_DARK });
 
   // ── upgrades ──────────────────────────────────────────────────────────────

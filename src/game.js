@@ -76,6 +76,7 @@ export function newGame() {
     shaft: { open: false, choice: 1, near: null },
     flash: { color: '#ffffff', a: 0 },
     vignette: 0, hitstop: 0, danger: 0, uiLock: 0, winch: 0, winchQuote: 0, winchArmed: false,
+    bankShown: 0, bankTick: 0,
     aim: null, deathCause: '', deathRecorded: false, lastRun: null,
     runStart: { tiles: 0, strikes: 0, crits: 0 },
     sonar: { t: 0, x: 0, y: 0, r: 0 },
@@ -240,6 +241,10 @@ function retainLessons(G) {
 
 export function bankRun(G, reason, fee) {
   retainLessons(G);
+  // The Depot's bank figure counts UP from what it was to what it is. A number that is simply
+  // already correct when the screen opens is a receipt; a number climbing with a tick under it
+  // is the payout, and the payout is the whole reason the run happened.
+  G.bankShown = G.bank;
   const cut = Math.max(0, Math.min(Math.round(fee || 0), Math.round(G.haul)));
   const amount = Math.round(G.haul) - cut;
   G.bank += amount;
@@ -539,7 +544,7 @@ export function resolveStrike(G, info) {
 
 function handleBreaks(G, broken, info, seedDeco, seedCavity) {
   const world = G.world, p = G.player, fx = G.fx;
-  let valueGained = 0, best = null, shear = 0, chain = 0;
+  let valueGained = 0, shear = 0, chain = 0;
   seedDeco = seedDeco || 0;
   seedCavity = seedCavity || 0;
 
@@ -552,11 +557,36 @@ function handleBreaks(G, broken, info, seedDeco, seedCavity) {
     G.stats.tilesBroken++;
 
     if (bi.item && bi.value > 0) {
+      // ── the seam gamble (GDD §4) ──────────────────────────────────────────
+      // Struck off the beat the pocket shatters and most of it is gone. Struck clean it pays,
+      // and sometimes the grain keeps opening. Three outcomes, one press, a quarter of a
+      // second — and the odds on the good one are bought with the combo, so the rhythm is the
+      // wager. A seam that always paid the same was the reason this felt like a vending
+      // machine rather than a mine.
+      const clean = !!(info.crit || info.heavy);
+      const richOdds = CFG.seamRichBase + Math.min(p.combo, CFG.comboMax) * CFG.seamRichCombo;
+      const rich = clean && G.rand.f() < richOdds;
+      const seam = rich ? CFG.seamRich : clean ? CFG.seamClean : CFG.seamShatter;
+
       const mul = G.world.stratum.valueMul * (1 + Math.min(p.combo, CFG.comboMax) * 0.03);
-      const value = Math.max(1, Math.round(bi.value * mul * (0.85 + G.rand.f() * 0.3)));
+      const value = Math.max(1, Math.round(bi.value * mul * seam * (0.9 + G.rand.f() * 0.2)));
       G.loot.spawn(bx, by, bi.item, value, G.rand, info.dx, info.dy);
       valueGained += value;
-      if (!best || value > best.v) best = { v: value, x: bx, y: by, kind: bi.item };
+
+      if (rich) {
+        fxDiscovery(G.fx, bx, by, '#ffd867');
+        for (let i = 0; i < 10; i++) {
+          G.fx.glint(bx + (G.rand.f() - 0.5) * 44, by + (G.rand.f() - 0.5) * 34, '#ffd867');
+        }
+        G.hitstop = Math.max(G.hitstop, 0.16);
+        G.cam.addShake(3.4);
+        G.flash.a = Math.max(G.flash.a, 0.34); G.flash.color = '#ffd867';
+        audio.seamRich(p.combo);
+      } else if (!clean) {
+        // The loss has to be legible or the win means nothing.
+        G.fx.dust(bx, by, bi.dust, 8);
+        audio.seamShatter();
+      }
     } else if (bi.item) {
       G.loot.spawn(bx, by, bi.item, 0, G.rand, info.dx, info.dy);
     }

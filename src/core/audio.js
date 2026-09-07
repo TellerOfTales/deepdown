@@ -338,6 +338,30 @@ export class AudioEngine {
     this._tone(65.4, 'sine', 1.0, 0.16, 0.3, 49, 0.05);
   }
 
+  /** A seam struck badly. Short, dull, and cheap — the sound of value you did not get. */
+  seamShatter() {
+    if (!this._ok('shatter', 60)) return;
+    this._noise(0.10, 'lowpass', 620, 1.4, 0.20, 0.10, 0, 240);
+    this._tone(96, 'triangle', 0.09, 0.10, 0.10, 62);
+  }
+
+  /**
+   * A rich pocket. This is the jackpot, so it is built like one: the music gets out of the way,
+   * a run of bells climbs instead of resolving, and a low body arrives underneath late so the
+   * whole thing lands rather than tinkles.
+   */
+  seamRich(combo) {
+    if (!this._ok('rich', 140)) return;
+    this.duck(1.3, 0.40);
+    const n = 6 + Math.min(4, Math.round((combo || 0) / 5));
+    for (let i = 0; i < n; i++) {
+      const step = PENT[i % PENT.length] + Math.floor(i / PENT.length) * 12;
+      this._bell(523.25 * semis(step), 2.0, 2.4 + i * 0.12, 0.9, 0.085, 0.55, i * 0.045);
+    }
+    this._tone(87.3, 'sine', 1.1, 0.22, 0.28, 41, 0.10);
+    this._noise(0.5, 'highpass', 5200, 0.7, 0.045, 0.6, 0, 9000);
+  }
+
   hurt() { if (!this._ok('hurt', 90)) return; this._noise(0.16, 'lowpass', 900, 1.2, 0.28, 0.25, 0, 260); this._tone(140, 'sawtooth', 0.18, 0.16, 0.2, 62); }
   heal() { if (!this._ok('heal', 120)) return; this._bell(523, 2, 1.4, 0.4, 0.08, 0.4); }
   die() {

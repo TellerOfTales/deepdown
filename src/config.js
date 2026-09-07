@@ -97,6 +97,22 @@ export const CFG = {
   lanternRadius: 9.4,      // tiles
   carryMax: 1100,          // "grams" — treasure has weight, wealth is literally a burden
 
+  // ── the seam (GDD §4: "break an ore seam correctly: bonus yield; incorrectly: reduce yield") ──
+  //
+  // This is the game's gamble, and until now it did not exist: ore paid a flat value with a
+  // fifteen percent wobble, which is a vending machine. Every ore tile is now a pull with three
+  // outcomes, resolved in the quarter-second the strike already takes.
+  //
+  // Off the beat you SHATTER it and lose most of the pocket. On the beat it CRACKS along the
+  // grain and pays. And sometimes the grain keeps opening — a rich pocket, whose odds climb
+  // with the combo, so the rhythm you were already practising is the thing buying the jackpot.
+  // The point is variance: same seam, wildly different answers, and the difference is you.
+  seamShatter:   0.70,
+  seamClean:     1.30,
+  seamRich:      3.20,
+  seamRichBase:  0.05,     // chance of a rich pocket on a clean break at combo 0...
+  seamRichCombo: 0.008,    // ...rising with every step of the combo
+
   // ── the winch line ───────────────────────────────────────────────────────────
   // You can always leave. That is not a concession, it is what makes the descent a decision
   // instead of a trap: GDD Pillar 3 wants wealth to create tension, and a player who is simply
