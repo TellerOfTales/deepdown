@@ -174,7 +174,7 @@ export function startRun(G, seed) {
   if (G.stats.runs <= 1) {
     // Name the controls this player actually has. The first line of the game told a phone
     // player to press SPACE, A, D and K.
-    msg(G, G.touch ? 'DIG  BREAK ROCK      PAD  MOVE AND AIM      JUMP'
+    msg(G, G.touch ? 'PAD MOVES AND AIMS      DIG BREAKS ROCK'
                    : 'SPACE  DIG      A D  MOVE      K  JUMP', '#d8d2c4');
     G.coachT = 0;
   }

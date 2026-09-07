@@ -15,7 +15,7 @@ import { generate as generateFn } from './world/gen.js';
 import { World as WorldClass } from './world/world.js';
 import { Rand as RandClass } from './core/rng.js';
 import { pixelRing } from './fx/particles.js';
-import { text } from './art/font.js';
+import { text, wrap as wrapFn, measure as measureFn } from './art/font.js';
 import { clamp } from './core/rng.js';
 import { L, computeLayout, control, overlaps } from './ui/layout.js';
 
@@ -349,6 +349,7 @@ window.G = G;   // handy in the console; harmless in a shipped build
 window.__L = L;
 window.__overlaps = overlaps;
 window.__input = input;
+window.__wrap = wrapFn; window.__measure = measureFn;
 // Handles for the telemetry harness. Harmless in a shipped build, and the alternative is a
 // second copy of the generator that drifts from the real one.
 window.__T = T_ALL; window.__D = D_ALL; window.__TILES = TILES_ALL; window.__STRATA = STRATA_ALL;
