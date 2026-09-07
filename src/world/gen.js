@@ -191,9 +191,28 @@ function goldVeins(G) {
   // not through carpeting the map — otherwise reading the rock stops mattering the deeper you go.
   const count = 3 + rand.i(0, 1);
   for (let i = 0; i < count; i++) growVein(G, rand.i(8, W - 9), rand.i(Math.floor(H * 0.12), H - 6), 0);
+
+  // One vein is placed rather than scattered: straight down from the lift, close enough that a
+  // player who does nothing but hold DOWN and swing meets flecks inside the first half-minute.
+  //
+  // Measured before this existed: a third of openings produced no treasure at all in thirty
+  // seconds, and a naive digger broke ONE ore tile in thirty-four. That was survivable when a
+  // seam paid a flat 46; it is not now that an off-beat strike shatters one. The first vein a
+  // person ever sees is the game explaining what flecks are FOR, and leaving it to chance meant
+  // a third of players were never told.
+  if (idx === 0) {
+    const { ex, ey } = entryPos(G);
+    // Laid ACROSS the descent, not merely near it. Placing it close by was not enough: a player
+    // holding DOWN breaks a one-tile column, and a seam three tiles to the side is a clue they
+    // have to already understand in order to act on. A horizontal seam under the lift is hit by
+    // anyone who digs at all — and the flecks around it then explain themselves in hindsight,
+    // which is the order this game wants to teach in.
+    const start = clamp(ex - 4, 3, W - 8);
+    growVein(G, start, ey + rand.i(7, 11), 0, [1, 0]);
+  }
 }
 
-function growVein(G, x, y, depth) {
+function growVein(G, x, y, depth, forceDir) {
   const { rand } = G;
   // Veins travel along READABLE structures: a persistent direction, mostly diagonal or axial,
   // so "the flecks are heading down-right" is a sentence a player can act on.
@@ -201,7 +220,7 @@ function growVein(G, x, y, depth) {
   // degrees. Out of order it produced 0 turns of 45 degrees, 490 straight reversals per 300
   // maps, and a fleck halo pointing back the way the seam came.
   const dirs = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
-  let d = rand.pick(dirs);
+  let d = forceDir || rand.pick(dirs);
   const len = 10 + rand.i(0, 12) - depth * 5;
   const tiles = [];
   // Exactly one place where the seam fattens into a pocket. Finding it should be an event,
@@ -481,10 +500,12 @@ function glowcaps(G) {
 }
 
 // ── 12. entry and shaft: the two ends of every decision ─────────────────────
+/** Where the lift lands. Deterministic, so the opening can be composed around it. */
+function entryPos(G) { return { ex: 5 + (G.idx * 2) % 4, ey: 4 }; }
+
 function entryAlcove(G) {
   const { W, H, idx } = G;
-  const ex = 5 + (idx * 2) % 4;
-  const ey = idx === 0 ? 4 : 4;
+  const { ex, ey } = entryPos(G);
   for (let y = ey - 3; y <= ey; y++)
     for (let x = ex - 2; x <= ex + 2; x++) { G.world.set(x, y, T.AIR); G.world.setDeco(x, y, D.NONE); }
   for (let x = ex - 2; x <= ex + 2; x++) if (!TILES[at(G, x, ey + 1)].solid) G.world.set(x, ey + 1, T.STONE);
