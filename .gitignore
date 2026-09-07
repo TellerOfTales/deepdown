@@ -1,3 +1,9 @@
 node_modules/
 shots/
 dist/*.map
+
+# Throwaway probes. All session long, checking a claim about the build has meant writing a
+# one-off harness, running it once and dropping it — a habit worth keeping, since the
+# alternative is reasoning about the code instead of asking it. The underscore marks them as
+# scratch so they never reach the repo; the harnesses worth keeping have real names.
+tools/_*.mjs
